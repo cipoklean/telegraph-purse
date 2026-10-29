@@ -32,4 +32,4 @@ Hermes: add the server to your MCP config (`command: node`, `args: [/path/to/tel
 The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. Test USDC comes from the Anjoman faucet.
 
 ## Status
-Testnet only. Caps, blocking, signing and the ledger are tested; the first paid call waits on a funded wallet.
+Testnet only. End-to-end paid call verified Oct 29, 2026 (pre-event test): CRYPTO_PRICE_USD BTC, $0.01, 540 ms, miner 9107, with receipt and settlement tx. H2 evidence starts Nov 1.
