@@ -4,10 +4,20 @@
   "description": "Budget-guarded Telegraph intelligence for Hermes and any MCP agent: spend caps, live-data policy, receipts ledger.",
   "type": "module",
   "main": "dist/index.js",
-  "bin": { "telegraph-purse": "dist/index.js" },
+  "bin": {
+    "telegraph-purse": "dist/index.js"
+  },
   "license": "MIT",
-  "engines": { "node": ">=20" },
-  "scripts": { "build": "tsc", "start": "node dist/index.js", "dev": "tsx src/index.ts", "probe": "tsx src/probe.ts" },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "probe": "tsx src/probe.ts",
+    "setup": "npm run build && node dist/setup.js"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@x402/fetch": "^2.11.0",
@@ -17,5 +27,9 @@
     "zod": "^3.25.0",
     "dotenv": "^16.4.0"
   },
-  "devDependencies": { "typescript": "^5.7.0", "@types/node": "^22.0.0", "tsx": "^4.19.0" }
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0"
+  }
 }

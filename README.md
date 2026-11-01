@@ -22,11 +22,13 @@ A capped USDC purse that lets a personal agent (Hermes, or any MCP client) buy l
 ## Run
 Requires Node 20+.
 ```bash
-npm install && npm run build
-cp .env.example .env   # set a burner TELEGRAPH_EVM_PRIVATE_KEY
-npm run probe          # free smoke test: live intents + price quotes
+git clone https://github.com/cipoklean/telegraph-purse.git && cd telegraph-purse
+npm install
+npm run setup   # builds, makes a burner wallet in .env, mints 5 test USDC if it has Sepolia ETH,
+                # installs the Hermes skill and prints the MCP entry to paste
+npm run probe   # free smoke test: live intents + price quotes
 ```
-Hermes: add the server to your MCP config (`command: node`, `args: [/path/to/telegraph-purse/dist/index.js]`) and copy `skills/telegraph-purse/` into your skills folder.
+No Sepolia ETH yet? Send the printed address a little from any Sepolia faucet and run `npm run setup` again. Then paste the printed `purse:` entry under `mcp_servers:` in `~/.hermes/config.yaml` and run `hermes mcp test purse`.
 
 ## Network (as of Oct 29, 2026)
 The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. Test USDC comes from the Anjoman faucet.
