@@ -14,7 +14,7 @@ You have a small wallet that pays per answer (about $0.01) on the Telegraph netw
 ## When to buy
 Buy only when the answer is live or recent and your own knowledge would be stale:
 - Prices: `purse_ask` intent `CRYPTO_PRICE_USD`, params `{ "symbol": "BTC" }`
-- Weather now: intent `WEATHER_CHECK_TEMPERATURE`, params `{ "location": "Lagos, Nigeria" }` (add the country: plain "Lagos" can mean Lagos, Portugal)`
+- Weather now: intent `WEATHER_CHECK_TEMPERATURE`, params `{ "location": "Lagos, Nigeria" }` (add the country: plain "Lagos" can mean Lagos, Portugal)
 - Fresh web results: intent `WEB_SEARCH_GENERAL`, params `{ "query": "..." }`
 - Anything else live: `purse_ask` with a plain `query`, or check `purse_intents` first.
 
