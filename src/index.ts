@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { ask, quote, balance, intents, intentSchema, verify, BudgetError } from "./purse.js";
+import { ask, quote, balance, intents, intentSchema, verify, BudgetError, PaidFailureError } from "./purse.js";
 import { readAll, summary } from "./ledger.js";
 
 const server = new McpServer({ name: "telegraph-purse", version: "0.1.0" });
@@ -18,7 +18,7 @@ const askShape = {
 
 server.tool("purse_ask", "Buy one answer from the Telegraph network with USDC (x402). Enforces per-call and daily caps and records a receipt. Only for live or fresh facts.", askShape, async (a) => {
   if (!a.query && !a.intent) return err("Give either query or intent.");
-  try { return out(await ask(a)); } catch (e: any) { return err((e instanceof BudgetError ? "BLOCKED by budget: " : "FAILED (not charged): ") + e.message); }
+  try { return out(await ask(a)); } catch (e: any) { return err((e instanceof BudgetError ? "BLOCKED by budget: " : e instanceof PaidFailureError ? "FAILED (paid, no answer): " : "FAILED (not charged): ") + e.message); }
 });
 server.tool("purse_quote", "Free. See what a Telegraph answer would cost without paying.", askShape, async (a) => out(await quote(a)));
 server.tool("purse_budget", "Free. Spend today vs caps, totals, and per-intent cost and latency.", {}, async () => out(summary()));

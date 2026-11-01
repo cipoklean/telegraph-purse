@@ -4,7 +4,7 @@ import { config } from "./config.js";
 
 export interface Entry {
   ts: string;
-  status: "paid" | "blocked" | "failed";
+  status: "paid" | "blocked" | "failed" | "failed_paid";
   intent?: string;
   query?: string;
   params?: Record<string, unknown>;
@@ -38,8 +38,10 @@ export function isoNow(): string {
 }
 const today = () => isoNow().slice(0, 10);
 
+const spent = (e: Entry) => e.status === "paid" || e.status === "failed_paid";
+
 export function spentTodayUsd(): number {
-  return readAll().filter((e) => e.status === "paid" && e.ts.startsWith(today())).reduce((s, e) => s + (e.cost_usd || 0), 0);
+  return readAll().filter((e) => spent(e) && e.ts.startsWith(today())).reduce((s, e) => s + (e.cost_usd || 0), 0);
 }
 
 export function summary() {
@@ -61,7 +63,8 @@ export function summary() {
     paid_calls: paid.length,
     blocked_calls: all.filter((e) => e.status === "blocked").length,
     failed_calls: all.filter((e) => e.status === "failed").length,
-    total_usd: +paid.reduce((s, e) => s + (e.cost_usd || 0), 0).toFixed(6),
+    failed_paid_calls: all.filter((e) => e.status === "failed_paid").length,
+    total_usd: +all.filter(spent).reduce((s, e) => s + (e.cost_usd || 0), 0).toFixed(6),
     by_intent: byIntent,
   };
 }

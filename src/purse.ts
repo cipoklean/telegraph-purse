@@ -12,6 +12,7 @@ const b64json = (v: string | null) => {
 };
 
 export class BudgetError extends Error {}
+export class PaidFailureError extends Error {}
 
 export function account() {
   if (!config.privateKey) throw new Error("TELEGRAPH_EVM_PRIVATE_KEY is not set");
@@ -20,6 +21,8 @@ export function account() {
 
 let paidFetch: typeof fetch | null = null;
 let lastBlock: string | null = null;
+/** Price of the payment signed for the current ask, if any. */
+let signedUsd: number | null = null;
 
 function getPaidFetch() {
   if (paidFetch) return paidFetch;
@@ -34,7 +37,7 @@ function getPaidFetch() {
     const left = config.dailyCapUsd - spentTodayUsd();
     if (usd > config.maxPerCallUsd) lastBlock = `price $${usd} is above the per-call cap $${config.maxPerCallUsd}`;
     else if (usd > left) lastBlock = `price $${usd} is above today's remaining budget $${left.toFixed(4)}`;
-    else { lastBlock = null; return; }
+    else { lastBlock = null; signedUsd = usd; return; }
     return { abort: true as const, reason: lastBlock };
   });
   paidFetch = wrapFetchWithPayment(fetch, client) as typeof fetch;
@@ -71,6 +74,7 @@ export async function ask(i: AskInput) {
     record({ ts: isoNow(), status: "blocked", intent: i.intent, why: i.why, reason });
     throw new BudgetError(reason);
   }
+  signedUsd = null;
   const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why };
   const t0 = Date.now();
   let res: Response;
@@ -89,6 +93,13 @@ export async function ask(i: AskInput) {
   const text = await res.text();
   if (!res.ok) {
     const reason = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+    // The node can settle the payment even when the miner's upstream fails, so a signed payment counts as spent.
+    const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
+    if (signedUsd !== null) {
+      const cost = signedUsd;
+      record({ ...base, status: "failed_paid", cost_usd: cost, tx_hash: settle?.transaction, reason, duration_ms: Date.now() - t0 });
+      throw new PaidFailureError(`$${cost} was paid but no answer came back. ${reason}`);
+    }
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);
   }

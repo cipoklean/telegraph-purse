@@ -29,6 +29,7 @@ Never buy for: definitions, history, maths, code, drafting, or something you alr
 ## When it fails
 - `BLOCKED by budget`: tell the user the cap was reached; don't retry. They can raise `PURSE_DAILY_CAP_USD`.
 - `FAILED (not charged)`: say live data is unavailable right now and answer from your knowledge, clearly labelled as possibly out of date. Retry at most once.
+- `FAILED (paid, no answer)`: the payment settled but the miner returned nothing. Tell the user it cost money with no answer, and do NOT retry the same intent in this conversation; answer from knowledge, labelled as possibly out of date.
 
 ## Free tools
 `purse_budget` (spend vs caps), `purse_receipts` (recent purchases), `purse_balance` (wallet USDC), `purse_intents` (live intents), `purse_verify` (prove a purchase by signal hash).
