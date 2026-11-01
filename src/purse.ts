@@ -50,7 +50,11 @@ async function withTimeout<T>(f: (s: AbortSignal) => Promise<T>): Promise<T> {
   try { return await f(c.signal); } finally { clearTimeout(t); }
 }
 
-export interface AskInput { query?: string; intent?: string; params?: Record<string, unknown>; why?: string }
+export interface AskInput { query?: string; intent?: string; params?: Record<string, unknown>; why?: string; miner?: string }
+
+/** Auto-routed by default; a miner id or slug pins the call to that miner (still bought through Telegraph). */
+const minerFor = (i: AskInput) => i.miner || (i.intent ? config.pinMiners[i.intent] : undefined);
+const askUrl = (i: AskInput) => { const m = minerFor(i); return `${config.nodeUrl}/engine/v1/ask${m ? "/" + encodeURIComponent(m) : ""}`; };
 
 function body(i: AskInput) {
   return JSON.stringify(i.intent ? { intent: i.intent, params: i.params || {} } : { query: i.query });
@@ -58,7 +62,7 @@ function body(i: AskInput) {
 
 /** Free: ask without paying and read the price from the 402 challenge. */
 export async function quote(i: AskInput) {
-  const res = await withTimeout((signal) => fetch(`${config.nodeUrl}/engine/v1/ask`, {
+  const res = await withTimeout((signal) => fetch(askUrl(i), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: body(i), signal,
   }));
   if (res.status !== 402) return { status: res.status, body: (await res.text()).slice(0, 1500) };
@@ -75,11 +79,11 @@ export async function ask(i: AskInput) {
     throw new BudgetError(reason);
   }
   signedUsd = null;
-  const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why };
+  const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why, ...(minerFor(i) ? { miner_id: minerFor(i) } : {}) };
   const t0 = Date.now();
   let res: Response;
   try {
-    res = await withTimeout((signal) => getPaidFetch()(`${config.nodeUrl}/engine/v1/ask`, {
+    res = await withTimeout((signal) => getPaidFetch()(askUrl(i), {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: body(i), signal,
     }));
   } catch (e: any) {
