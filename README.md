@@ -95,7 +95,7 @@ Every row below is matched to its on-chain settlement: the wallet minted 5.00 te
 | 2026-11-09 10:55:31 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.4 °C (miner 20260821) | 0.01 USDC | [0x2c15cde4…656fa](https://sepolia.etherscan.io/tx/0x2c15cde47bebcdb2740cfa35c2aef496766bc280159495932860f4ce659656fa) |
 | 2026-11-09 11:00:53 | `CRYPTO_PRICE_USD` BTC | $74,114 (miner 190070) | 0.01 USDC | [0x0d4a0ce8…7624](https://sepolia.etherscan.io/tx/0x0d4a0ce8df837722dee3833f5adc14fca2aba1366cd7d25495cb4a441eae7624) |
 | 2026-11-09 11:01:05 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.8 °C (miner 20260821) | 0.01 USDC | [0x88a273bd…903dbd](https://sepolia.etherscan.io/tx/0x88a273bd228f8974408bb284b9fc80e627115eae885a20d09fd9fa8bdb903dbd) |
-| 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | sourced answer (miner 303) | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
+| 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | paid; miner 303 returned no readable answer | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
 
 The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530 — `failed_paid`). Row 12 is the task-1 weather proof. Rows 13–15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
 
