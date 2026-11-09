@@ -77,7 +77,7 @@ One JSON line per attempt. `status` is `paid`, `blocked` (a cap or the allow-lis
 ## Evidence (Season II, testnet)
 Autonomous purchases by a Hermes agent through Telegraph, paid in test USDC on Ethereum Sepolia from wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655`.
 
-Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.80, so exactly **20 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia — the 11 below from Nov 1 plus 9 from Nov 9 (weather proof, the two Morning Brief runs, and the search-miner refinement tests). The ledger row count equals the on-chain transfer count.
+Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.78, so exactly **22 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia — the 11 below from Nov 1 plus 11 from Nov 9 (weather proof, the two Morning Brief runs, and the search-miner probe tests). The ledger row count equals the on-chain transfer count.
 
 | Time (UTC) | Intent | Answer | Cost | Settlement |
 |---|---|---|---|---|
