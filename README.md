@@ -15,10 +15,10 @@ A capped USDC purse that lets a personal agent (Hermes, or any MCP client) buy l
 Hermes: Using telegraph-purse to buy the live BTC price fact.
   Purse · purse_ask
 
-Hermes: BTC is $77,848.80 USD right now.
-Cost $0.01 · miner Cp Coinbase (#190069) · receipt 0xef018ec2c0a04b79…2fbe8e
+Hermes: BTC is $74,114 USD right now.
+Cost $0.01 · miner Cp Coingecko (#190070) · receipt 0x1e6ea5f7e11607d3…8a089f
 ```
-(Hermes session on Nov 1, 2026. The settlement for this exact purchase is the first row under Evidence.)
+(Hermes session on Nov 9, 2026. The settlement for this exact purchase is the third row under Evidence — 2026-11-09 11:00:53.)
 
 ## Tools (MCP, stdio)
 | Tool | Paid | What it does |
@@ -77,13 +77,30 @@ One JSON line per attempt. `status` is `paid`, `blocked` (a cap or the allow-lis
 ## Evidence (Season II, testnet)
 Autonomous purchases by a Hermes agent through Telegraph, paid in test USDC on Ethereum Sepolia from wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655`.
 
+Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.80, so exactly **20 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia — the 11 below from Nov 1 plus 9 from Nov 9 (weather proof, the two Morning Brief runs, and the search-miner refinement tests). The ledger row count equals the on-chain transfer count.
+
 | Time (UTC) | Intent | Answer | Cost | Settlement |
 |---|---|---|---|---|
 | 2026-11-01 18:13:44 | `CRYPTO_PRICE_USD` BTC | $77,848.80 | 0.01 USDC | [0xb3d0bd7c…17a5](https://sepolia.etherscan.io/tx/0xb3d0bd7cfa2006bd504a228be96bb31bf59df53066714fed3fa50fcb535917a5) (block 12042724) |
 | 2026-11-01 18:22:47 | `CRYPTO_PRICE_USD` BTC | $77,810 | 0.01 USDC | [0x05af43d7…ebee](https://sepolia.etherscan.io/tx/0x05af43d7be0cd3fd9f6e60dde1eaa7a03afdefc88ba7744854b527290a34ebee) (block 12042769) |
+| 2026-11-01 18:42:11 | `CRYPTO_PRICE_USD` BTC | — | 0.01 USDC | [0x1b7dcc85…dbc5a](https://sepolia.etherscan.io/tx/0x1b7dcc85d42d7617dd6a0ff0573520b2e67b5898a6bb9a3c4258f187391dbc5a) (block 12042866) |
+| 2026-11-01 18:14:42 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xd0031531…bff1](https://sepolia.etherscan.io/tx/0xd0031531978550abc63c11be7f0f7fdd7aafe33897a2f323b900fe294313bff1) (block 12042728) |
+| 2026-11-01 18:15:08 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0x2d960ee6…433d](https://sepolia.etherscan.io/tx/0x2d960ee6d554e160992af2d3e7b71b21f45415f80ac81ff899159257e126433d) (block 12042730) |
+| 2026-11-01 18:24:12 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xa90f409d…0d0ba](https://sepolia.etherscan.io/tx/0xa90f409dff94395de44731547bf4428b3402165926239dd40a34887bec10d0ba) (block 12042776) |
+| 2026-11-01 18:24:43 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0x99f7693b…be052](https://sepolia.etherscan.io/tx/0x99f7693bb91f182608c6d773b3208a605ba153a2c35e4df62deb36d01c8be052) (block 12042778) |
+| 2026-11-01 18:42:35 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (circuit open) | 0.01 USDC `failed_paid` | [0x2cd33b6d…96703](https://sepolia.etherscan.io/tx/0x2cd33b6dc9f855df77bd1f43f3bfa060a097e6cab26c2bdae4996cbf66d96703) (block 12042868) |
+| 2026-11-01 18:43:10 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0x1e707ba7…37f3](https://sepolia.etherscan.io/tx/0x1e707ba7cf56e4430da11cbc858d1efd63877e04c9bde4abdf032afbf08737f3) (block 12042871) |
+| 2026-11-01 22:03:18 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xc453c8c7…dbe25](https://sepolia.etherscan.io/tx/0xc453c8c76c6ccc8c7275855b79212e6e09303251dd20ec7a8d521936239dbe25) (block 12043867) |
+| 2026-11-01 22:03:45 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xdad34aea…f2ff1](https://sepolia.etherscan.io/tx/0xdad34aea6e9677ec7e1aec2f7f1baf00f8f90efd50f32d08696347208e6f2ff1) (block 12043869) |
+| 2026-11-09 10:55:31 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.4 °C (miner 20260821) | 0.01 USDC | [0x2c15cde4…656fa](https://sepolia.etherscan.io/tx/0x2c15cde47bebcdb2740cfa35c2aef496766bc280159495932860f4ce659656fa) |
+| 2026-11-09 11:00:53 | `CRYPTO_PRICE_USD` BTC | $74,114 (miner 190070) | 0.01 USDC | [0x0d4a0ce8…7624](https://sepolia.etherscan.io/tx/0x0d4a0ce8df837722dee3833f5adc14fca2aba1366cd7d25495cb4a441eae7624) |
+| 2026-11-09 11:01:05 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.8 °C (miner 20260821) | 0.01 USDC | [0x88a273bd…903dbd](https://sepolia.etherscan.io/tx/0x88a273bd228f8974408bb284b9fc80e627115eae885a20d09fd9fa8bdb903dbd) |
+| 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | sourced answer (miner 303) | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
 
-## Network (as of Nov 1, 2026)
-The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. `npm run setup` mints test USDC from that contract; the Anjoman faucet also gives it out.
+The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530 — `failed_paid`). Row 12 is the task-1 weather proof. Rows 13–15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
+
+## Network (as of Nov 1, 2026; re-verified Nov 9)
+The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. `npm run setup` mints test USDC from that contract; the Anjoman faucet also gives it out. Re-verified Nov 9: the same Ethereum Sepolia settlement holds for the current devnode.
 
 ## Known issue found on Nov 1, 2026
 The weather miner's tunnel was down (Cloudflare error 1033). The node answered HTTP 500 but still settled the 0.01 USDC payment for those asks. The first version logged them as "not charged". The purse now records any failure after a signed payment as `failed_paid`, counts it against the caps, and the skill tells the agent not to retry that miner. Diagnosis: the router kept picking miner 0 (Lacre-Meteo), whose host returns Cloudflare 1033, although Telegraph's docs say payment settles only on success. Weather is now pinned to miner 20260821 (Amanat, Open-Meteo), which answered Lagos 28.7 °C on Nov 1 in a sandbox test. `purse_ask` also takes an optional `miner`.

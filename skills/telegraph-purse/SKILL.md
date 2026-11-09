@@ -30,9 +30,10 @@ For the facts above, `purse_ask` is the only source. Do not fetch them yourself 
 4. In your reply, give the answer, then a short footer: cost, miner, and the receipt hash.
 
 ## When it fails
-- `BLOCKED by budget`: tell the user the cap was reached; don't retry. They can raise `PURSE_DAILY_CAP_USD`.
+- `BLOCKED by budget`: tell the user the cap was reached; don't retry. They can raise `PURSE_DAILY_CAP_USD` or `PURSE_MAX_PER_CALL_USD`.
 - `FAILED (not charged)`: say live data is unavailable right now and answer from your knowledge, clearly labelled as possibly out of date. Retry at most once.
 - `FAILED (paid, no answer)`: the payment settled but the miner returned nothing. Tell the user it cost money with no answer, and do NOT retry the same miner in this conversation. You may try once more with `miner` set to a different id from `purse_intents`, telling the user it costs another ~$0.01; otherwise answer from knowledge, labelled as possibly out of date.
+- `WEB_SEARCH_GENERAL` quality note (2026-11-09): most search miners currently return thin or off-topic answers (a single sourced `answer`/`brief`, sometimes unrelated to the query). Buy once, report what you got, and do not burn several $0.01 calls comparing miners — a search miner's answer is not a correctness oracle.
 
 ## Free tools
 `purse_budget` (spend vs caps), `purse_receipts` (recent purchases), `purse_balance` (wallet USDC), `purse_intents` (live intents), `purse_verify` (prove a purchase by signal hash).
