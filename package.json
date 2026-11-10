@@ -16,21 +16,26 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "node --experimental-vm-modules --import tsx/esm --test test/*.test.ts",
+    "lint": "eslint .",
     "probe": "tsx src/probe.ts",
     "setup": "npm run build && node dist/setup.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@x402/fetch": "^2.11.0",
-    "@x402/evm": "^2.11.0",
     "@x402/core": "^2.11.0",
+    "@x402/evm": "^2.11.0",
+    "@x402/fetch": "^2.11.0",
+    "dotenv": "^16.4.0",
     "viem": "^2.21.0",
-    "zod": "^4.6.7",
-    "dotenv": "^16.4.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.0"
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.72.2"
   }
 }

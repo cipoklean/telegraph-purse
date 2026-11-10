@@ -92,7 +92,7 @@ const receipt = (intent: string) => ({ intent, cost_usd: 0.01, miner_id: "m1", r
 
 test("a good run renders each answer beside its receipt", async () => {
   const opts = brief.parseArgs([]);
-  const { items, receipts } = await brief.runBrief(opts, async (b: any) => {
+  const { items, receipts } = await brief.runBrief(opts, (b: any) => {
     if (b.intent === "CRYPTO_PRICE_USD") return { result: { price_usd: 74114 }, receipt: receipt(b.intent) };
     if (b.intent === "WEATHER_CHECK_TEMPERATURE") return { result: { temperature_c: 31.8 }, receipt: receipt(b.intent) };
     return { result: { answer: "something happened", sources: ["https://example.test/a"] }, receipt: receipt(b.intent) };
@@ -111,7 +111,7 @@ test("a good run renders each answer beside its receipt", async () => {
 
 test("a failed leg is reported as FAILED with its reason, never as an answer", async () => {
   const opts = brief.parseArgs([]);
-  const { items, receipts } = await brief.runBrief(opts, async (b: any) => {
+  const { items, receipts } = await brief.runBrief(opts, (b: any) => {
     if (b.intent === "WEATHER_CHECK_TEMPERATURE") throw new Error("HTTP 500: upstream tunnel down");
     if (b.intent === "WEB_SEARCH_GENERAL") return { result: { answer: "news" }, receipt: receipt(b.intent) };
     return { result: { price_usd: 1 }, receipt: receipt(b.intent) };
@@ -130,7 +130,7 @@ test("a failed leg is reported as FAILED with its reason, never as an answer", a
 
 test("a search leg that was paid but carried no answer is called out, not dressed up", async () => {
   const opts = brief.parseArgs([]);
-  const { items, receipts } = await brief.runBrief(opts, async (b: any) => {
+  const { items, receipts } = await brief.runBrief(opts, (b: any) => {
     if (b.intent === "WEB_SEARCH_GENERAL") return { result: {}, receipt: receipt(b.intent) };
     return { result: { price_usd: 1, temperature_c: 2 }, receipt: receipt(b.intent) };
   });

@@ -28,8 +28,16 @@ export function account() {
 let transport: typeof fetch = fetch;
 let paidFetch: typeof fetch | null = null;
 let lastBlock: string | null = null;
-/** Price of the payment signed for the current ask, if any. */
+/**
+ * Price of the payment signed for the current ask, if any.
+ *
+ * Read through this accessor rather than the variable itself: the x402 client
+ * writes the variable from a callback in another module, and control-flow
+ * analysis cannot see that write, so it would narrow a post-assignment read of
+ * the variable to `never`. A declared return type keeps the read honest.
+ */
 let signedUsd: number | null = null;
+function signedUsdNow(): number | null { return signedUsd; }
 
 /**
  * Paid asks share module state (the signed price, the guard's block reason and the cached
@@ -63,6 +71,9 @@ function getPaidFetch() {
     spendControls: { allowedAssets: [{ network: config.evmNetwork, asset: config.usdc, maxAmountPerPayment: String(Math.round(config.maxPerCallUsd * 1e6)) }] },
   });
   // The guard: runs after the 402 challenge, before anything is signed.
+  // The hook contract is Promise<void | {abort, reason}>, so this async is
+  // required by the interface even though the body only returns.
+  // eslint-disable-next-line @typescript-eslint/require-await
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
     const usd = Number(selectedRequirements.amount) / 1e6;
     const left = config.dailyCapUsd - spentTodayUsd();
@@ -71,7 +82,7 @@ function getPaidFetch() {
     else { lastBlock = null; signedUsd = usd; return; }
     return { abort: true as const, reason: lastBlock };
   });
-  paidFetch = wrapFetchWithPayment(transport, client) as typeof fetch;
+  paidFetch = wrapFetchWithPayment(transport, client);
   return paidFetch;
 }
 
@@ -137,7 +148,8 @@ async function buy(i: AskInput) {
 
   /** A payment was signed and the answer never arrived: the money may or may not have settled, but it counts as spent. */
   const paidFailure = (reason: string, settle?: any): never => {
-    const cost = signedUsd as number;
+    // Only reached once the guard recorded a signed price, so this is a number.
+    const cost = signedUsdNow() as number;
     signedUsd = null;
     record({ ...base, status: "failed_paid", cost_usd: cost, tx_hash: settle?.transaction, reason, duration_ms: Date.now() - t0 });
     throw new PaidFailureError(reason);
@@ -153,31 +165,34 @@ async function buy(i: AskInput) {
     if (!lastBlock && msg.includes("spendControls")) lastBlock = `price is above the per-call cap $${config.maxPerCallUsd}`;
     if (lastBlock) { const reason = lastBlock; lastBlock = null; signedUsd = null; record({ ...base, status: "blocked", reason }); throw new BudgetError(reason); }
     // Past the guard the payment was signed, so an abort means an uncertain settlement, never a free call.
-    if (signedUsd !== null) {
+    const signed = signedUsdNow();
+    if (signed !== null) {
       return paidFailure(e?.name === "AbortError"
-        ? `timed out after ${config.timeoutMs} ms after the payment was signed; settlement of $${signedUsd} is not established`
+        ? `timed out after ${config.timeoutMs} ms after the payment was signed; settlement of $${signed} is not established`
         : `${msg} after the payment was signed; settlement is not established`);
     }
     const reason = e?.name === "AbortError" ? `timed out after ${config.timeoutMs} ms (not charged)` : msg;
     record({ ...base, reason, duration_ms: Date.now() - t0 });
-    throw new Error(reason);
+    throw new Error(reason, { cause: e });
   }
 
   let text: string;
   try {
     text = await res.text();
   } catch (e: any) {
-    if (signedUsd !== null) return paidFailure(`${String(e?.message || e)} while reading the response after the payment was signed; settlement is not established`);
-    const reason = String(e?.message || e);
-    record({ ...base, reason, duration_ms: Date.now() - t0 });
-    throw new Error(reason);
+    const readError = String(e?.message || e);
+    const signed = signedUsdNow();
+    if (signed !== null) return paidFailure(`${readError} while reading the response after the payment was signed; settlement is not established`);
+    record({ ...base, reason: readError, duration_ms: Date.now() - t0 });
+    throw new Error(readError, { cause: e });
   }
 
   if (!res.ok) {
     const reason = `HTTP ${res.status}: ${text.slice(0, 300)}`;
     // The node can settle the payment even when the miner's upstream fails, so a signed payment counts as spent.
     const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
-    if (signedUsd !== null) return paidFailure(`$${signedUsd} was paid but no answer came back. ${reason}`, settle);
+    const signed = signedUsdNow();
+    if (signed !== null) return paidFailure(`$${signed} was paid but no answer came back. ${reason}`, settle);
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);
   }
@@ -186,7 +201,8 @@ async function buy(i: AskInput) {
   try {
     data = JSON.parse(text);
   } catch {
-    if (signedUsd !== null) return paidFailure(`$${signedUsd} was paid but the response was not valid JSON, so the answer is unknown; settlement is not established`);
+    const signed = signedUsdNow();
+    if (signed !== null) return paidFailure(`$${signed} was paid but the response was not valid JSON, so the answer is unknown; settlement is not established`);
     const reason = "the node returned a non-JSON body";
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);

@@ -29,6 +29,17 @@ process.env.PURSE_TIMEOUT_MS = "1000";
 process.env.PURSE_ALLOWED_INTENTS = "";
 process.env.PURSE_PIN_MINERS = "";
 
+// Tripwire: if anything here reaches the real network, that is a test bug, not a
+// slow test. Replaced before the modules under test are imported so the default
+// transport is the tripwire too. Restored in the final after() hook below.
+const NETWORK_CALLS: string[] = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = ((input: unknown) => {
+  const url = String((input as { url?: string })?.url ?? input);
+  NETWORK_CALLS.push(url);
+  throw new Error(`network access during tests is not allowed: ${url}`);
+});
+
 const purse = await import("../src/purse.js");
 const { config } = await import("../src/config.js");
 const ledger = await import("../src/ledger.js");
@@ -92,7 +103,7 @@ function makeTransport(h: TransportHandlers): { fetch: typeof fetch; calls: stri
     if (!h.paid) throw new Error("test transport: no paid handler configured");
     return h.paid(req, req.signal);
   };
-  return { fetch: f as unknown as typeof fetch, calls };
+  return { fetch: f, calls };
 }
 
 const json200 = (body: unknown, headers: Record<string, string> = {}) =>
@@ -123,6 +134,12 @@ beforeEach(() => {
 
 afterEach(() => {
   purse.setPaidTransport(null);
+});
+
+// Prove the tripwire held: no test in this file touched the network.
+test.after(() => {
+  globalThis.fetch = realFetch;
+  assert.deepEqual(NETWORK_CALLS, [], "tests must not reach the network");
 });
 
 // ---------------------------------------------------------------------------
@@ -263,8 +280,6 @@ test("post-signing timeout records the signed amount as failed_paid and never ca
 // ---------------------------------------------------------------------------
 test("concurrent asks never overspend one purchase's remaining daily budget", async () => {
   setCaps(0.05, 0.05); // room for exactly one 0.05 purchase today
-  let delayPaid = 0;
-  const barrier = new Promise<void>((r) => { delayPaid = 1; (globalThis as any).__r = r; });
   const t = makeTransport({
     amountUusdc: "50000",
     paid: async () => {
@@ -282,7 +297,7 @@ test("concurrent asks never overspend one purchase's remaining daily budget", as
   ]);
 
   const paid = results.filter((r) => r.status === "fulfilled");
-  const blocked = results.filter((r) => r.status === "rejected" && (r as PromiseRejectedResult).reason instanceof purse.BudgetError);
+  const blocked = results.filter((r) => r.status === "rejected" && (r).reason instanceof purse.BudgetError);
   assert.equal(paid.length, 1, "exactly one purchase should be allowed in the budget");
   assert.equal(blocked.length, 1, "the other ask must be refused by the daily cap");
 
@@ -299,7 +314,7 @@ test("an earlier queued ask failing does not poison a later one", async () => {
   let n = 0;
   const t = makeTransport({
     amountUusdc: "50000",
-    unpaid: (req) => {
+    unpaid: () => {
       n++;
       if (n === 1) throw new Error("ECONNRESET on the first ask");
       return new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": b64(challenge("50000")) } });
