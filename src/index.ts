@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { ask, quote, balance, intents, intentSchema, verify, BudgetError, PaidFailureError } from "./purse.js";
+import { ask, quote, balance, intents, intentSchema, verify, BudgetError, PaidFailureError, PolicyError } from "./purse.js";
 import { readAll, summary } from "./ledger.js";
 
 const server = new McpServer({ name: "telegraph-purse", version: "0.1.0" });
@@ -14,12 +14,12 @@ const askShape = {
   intent: z.string().optional().describe("Canonical intent, e.g. CRYPTO_PRICE_USD, WEATHER_CHECK_TEMPERATURE, WEB_SEARCH_GENERAL"),
   params: z.record(z.unknown()).optional().describe("Typed params for the intent, e.g. {symbol:'BTC'} or {location:'Lagos'}"),
   miner: z.string().optional().describe("Optional miner id or slug to pin this call to one miner (still bought through Telegraph). Leave empty to auto-route."),
-  why: z.string().describe("One line: why fresh, paid data is needed instead of your own knowledge"),
+  why: z.string().min(1, "why must not be empty").describe("One line: why fresh, paid data is needed instead of your own knowledge"),
 };
 
 server.tool("purse_ask", "Buy one answer from the Telegraph network with USDC (x402). Enforces per-call and daily caps and records a receipt. Only for live or fresh facts.", askShape, async (a) => {
   if (!a.query && !a.intent) return err("Give either query or intent.");
-  try { return out(await ask(a)); } catch (e: any) { return err((e instanceof BudgetError ? "BLOCKED by budget: " : e instanceof PaidFailureError ? "FAILED (paid, no answer): " : "FAILED (not charged): ") + e.message); }
+  try { return out(await ask(a)); } catch (e: any) { return err((e instanceof BudgetError ? "BLOCKED by budget: " : e instanceof PaidFailureError ? "FAILED (paid, no answer): " : e instanceof PolicyError ? "BLOCKED by policy: " : "FAILED (not charged): ") + e.message); }
 });
 server.tool("purse_quote", "Free. See what a Telegraph answer would cost without paying.", askShape, async (a) => out(await quote(a)));
 server.tool("purse_budget", "Free. Spend today vs caps, totals, and per-intent cost and latency.", {}, async () => out(summary()));

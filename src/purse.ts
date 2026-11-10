@@ -13,16 +13,47 @@ const b64json = (v: string | null) => {
 
 export class BudgetError extends Error {}
 export class PaidFailureError extends Error {}
+export class PolicyError extends Error {}
 
 export function account() {
   if (!config.privateKey) throw new Error("TELEGRAPH_EVM_PRIVATE_KEY is not set");
   return privateKeyToAccount(config.privateKey as `0x${string}`);
 }
 
+/**
+ * Raw HTTP transport beneath the x402 payment wrapper. Production uses the global fetch.
+ * Tests replace it to drive the REAL price guard and REAL EIP-3009 signing against a
+ * scripted offline endpoint, so no network call and no wallet spend is involved.
+ */
+let transport: typeof fetch = fetch;
 let paidFetch: typeof fetch | null = null;
 let lastBlock: string | null = null;
 /** Price of the payment signed for the current ask, if any. */
 let signedUsd: number | null = null;
+
+/**
+ * Paid asks share module state (the signed price, the guard's block reason and the cached
+ * wrapper), so only one may be in flight at a time: two at once would both clear the same
+ * daily-budget guard before either recorded a spend. A chained promise is the whole mutex.
+ */
+let askQueue: Promise<unknown> = Promise.resolve();
+
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = askQueue.then(fn, fn);
+  askQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+/** Test seam: set the raw transport under the x402 wrapper. Pass null to restore global fetch. */
+export function setPaidTransport(f: typeof fetch | null): void {
+  transport = f ?? fetch;
+  paidFetch = null; // rebuild the cached x402 wrapper against the new transport
+}
+
+/** The transport currently wired beneath the x402 wrapper; used to assert default wiring. */
+export function paidTransport(): typeof fetch {
+  return transport;
+}
 
 function getPaidFetch() {
   if (paidFetch) return paidFetch;
@@ -40,7 +71,7 @@ function getPaidFetch() {
     else { lastBlock = null; signedUsd = usd; return; }
     return { abort: true as const, reason: lastBlock };
   });
-  paidFetch = wrapFetchWithPayment(fetch, client) as typeof fetch;
+  paidFetch = wrapFetchWithPayment(transport, client) as typeof fetch;
   return paidFetch;
 }
 
@@ -62,25 +93,56 @@ function body(i: AskInput) {
 
 /** Free: ask without paying and read the price from the 402 challenge. */
 export async function quote(i: AskInput) {
-  const res = await withTimeout((signal) => fetch(askUrl(i), {
+  const spent = spentTodayUsd();
+  const remaining = config.dailyCapUsd - spent;
+  const res = await withTimeout((signal) => transport(askUrl(i), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: body(i), signal,
   }));
   if (res.status !== 402) return { status: res.status, body: (await res.text()).slice(0, 1500) };
   const ch = b64json(res.headers.get("PAYMENT-REQUIRED"));
   const accepts = (ch?.accepts || []).map((a: any) => ({ network: a.network, usd: Number(a.amount) / 1e6, payTo: a.payTo }));
-  return { status: 402, accepts, within_caps: accepts.some((a: any) => a.usd <= config.maxPerCallUsd) };
+  const withinPerCall = accepts.some((a: any) => a.usd <= config.maxPerCallUsd);
+  const withinDaily = accepts.some((a: any) => a.usd <= remaining);
+  return {
+    status: 402, accepts,
+    within_per_call_cap: withinPerCall,
+    within_daily_cap: withinDaily,
+    within_caps: withinPerCall && withinDaily,
+    spent_today_usd: spent,
+    remaining_daily_usd: +remaining.toFixed(6),
+  };
 }
 
 /** Paid: buy one answer through Telegraph, inside the caps, and record the receipt. */
 export async function ask(i: AskInput) {
+  if (!i.why?.trim()) {
+    const reason = "every paid ask must state a why: one line on why fresh, paid data is needed instead of your own knowledge";
+    record({ ts: isoNow(), status: "blocked", intent: i.intent, query: i.query, params: i.params, why: i.why, reason });
+    throw new PolicyError(reason);
+  }
   if (i.intent && config.allowedIntents.length && !config.allowedIntents.includes(i.intent)) {
     const reason = `intent ${i.intent} is not in PURSE_ALLOWED_INTENTS`;
     record({ ts: isoNow(), status: "blocked", intent: i.intent, why: i.why, reason });
     throw new BudgetError(reason);
   }
+  // Serialized: the guard reads and the ledger write must be atomic with respect to other asks.
+  return serialize(() => buy(i));
+}
+
+async function buy(i: AskInput) {
   signedUsd = null;
+  lastBlock = null;
   const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why, ...(minerFor(i) ? { miner_id: minerFor(i) } : {}) };
   const t0 = Date.now();
+
+  /** A payment was signed and the answer never arrived: the money may or may not have settled, but it counts as spent. */
+  const paidFailure = (reason: string, settle?: any): never => {
+    const cost = signedUsd as number;
+    signedUsd = null;
+    record({ ...base, status: "failed_paid", cost_usd: cost, tx_hash: settle?.transaction, reason, duration_ms: Date.now() - t0 });
+    throw new PaidFailureError(reason);
+  };
+
   let res: Response;
   try {
     res = await withTimeout((signal) => getPaidFetch()(askUrl(i), {
@@ -89,25 +151,47 @@ export async function ask(i: AskInput) {
   } catch (e: any) {
     const msg = String(e?.message || e);
     if (!lastBlock && msg.includes("spendControls")) lastBlock = `price is above the per-call cap $${config.maxPerCallUsd}`;
-    if (lastBlock) { const reason = lastBlock; lastBlock = null; record({ ...base, status: "blocked", reason }); throw new BudgetError(reason); }
-    const reason = e?.name === "AbortError" ? `timed out after ${config.timeoutMs} ms (not charged)` : String(e?.message || e);
+    if (lastBlock) { const reason = lastBlock; lastBlock = null; signedUsd = null; record({ ...base, status: "blocked", reason }); throw new BudgetError(reason); }
+    // Past the guard the payment was signed, so an abort means an uncertain settlement, never a free call.
+    if (signedUsd !== null) {
+      return paidFailure(e?.name === "AbortError"
+        ? `timed out after ${config.timeoutMs} ms after the payment was signed; settlement of $${signedUsd} is not established`
+        : `${msg} after the payment was signed; settlement is not established`);
+    }
+    const reason = e?.name === "AbortError" ? `timed out after ${config.timeoutMs} ms (not charged)` : msg;
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);
   }
-  const text = await res.text();
+
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e: any) {
+    if (signedUsd !== null) return paidFailure(`${String(e?.message || e)} while reading the response after the payment was signed; settlement is not established`);
+    const reason = String(e?.message || e);
+    record({ ...base, reason, duration_ms: Date.now() - t0 });
+    throw new Error(reason);
+  }
+
   if (!res.ok) {
     const reason = `HTTP ${res.status}: ${text.slice(0, 300)}`;
     // The node can settle the payment even when the miner's upstream fails, so a signed payment counts as spent.
     const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
-    if (signedUsd !== null) {
-      const cost = signedUsd;
-      record({ ...base, status: "failed_paid", cost_usd: cost, tx_hash: settle?.transaction, reason, duration_ms: Date.now() - t0 });
-      throw new PaidFailureError(`$${cost} was paid but no answer came back. ${reason}`);
-    }
+    if (signedUsd !== null) return paidFailure(`$${signedUsd} was paid but no answer came back. ${reason}`, settle);
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);
   }
-  const data = JSON.parse(text);
+
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    if (signedUsd !== null) return paidFailure(`$${signedUsd} was paid but the response was not valid JSON, so the answer is unknown; settlement is not established`);
+    const reason = "the node returned a non-JSON body";
+    record({ ...base, reason, duration_ms: Date.now() - t0 });
+    throw new Error(reason);
+  }
+
   const receipt = b64json(res.headers.get("X-TELEGRAPH-RECEIPT"));
   const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
   const entry: Entry = {
@@ -120,6 +204,7 @@ export async function ask(i: AskInput) {
     tx_hash: receipt?.tx_hash || settle?.transaction, epoch_id: receipt?.epoch_id,
   };
   record(entry);
+  signedUsd = null;
   return { result: data.result, routing: data.routing, receipt: entry };
 }
 
