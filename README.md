@@ -18,7 +18,7 @@ Hermes: Using telegraph-purse to buy the live BTC price fact.
 Hermes: BTC is $74,114 USD right now.
 Cost $0.01 · miner Cp Coingecko (#190070) · receipt 0x1e6ea5f7e11607d3…8a089f
 ```
-(Hermes session on Nov 9, 2026. The settlement for this exact purchase is the third row under Evidence — 2026-11-09 11:00:53.)
+(Hermes session on Nov 9, 2026. The settlement for this exact purchase is the third row under Evidence at 2026-11-09 11:00:53.)
 
 ## Tools (MCP, stdio)
 | Tool | Paid | What it does |
@@ -41,6 +41,50 @@ npm run setup   # builds, makes a burner wallet in .env, mints 5 test USDC if it
 npm run probe   # free smoke test: live intents + price quotes
 ```
 No Sepolia ETH yet? Send the printed address a little from any Sepolia faucet and run `npm run setup` again. Then paste the printed `purse:` entry under `mcp_servers:` in `~/.hermes/config.yaml` and run `hermes mcp test purse`.
+
+## Morning Brief (optional, manual)
+`scripts/morning_brief.js` buys three live facts in one run (a crypto price, a
+current temperature, one fresh web search) and prints one brief with a receipt
+line per leg. It is a CLI: importing it does nothing, and nothing is bought
+until you run it. Build first, because it loads the purse from `dist/`:
+
+```bash
+npm run build
+node scripts/morning_brief.js --dry-run      # show the plan; no wallet, no request, no spend
+node scripts/morning_brief.js                # buy the three default facts (about $0.03 total)
+node scripts/morning_brief.js --help         # every option
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `--symbol` | `BTC` | Symbol for the `CRYPTO_PRICE_USD` leg |
+| `--location` | `Lagos, Nigeria` | Place for `WEATHER_CHECK_TEMPERATURE`. The country is included because plain `Lagos` also matches Lagos, Portugal |
+| `--query` | `AI news today` | Query for `WEB_SEARCH_GENERAL` |
+| `--dry-run` | off | Print the intents and params that would be bought. States plainly that no request was made. Does not load a wallet or call `purse.ask` |
+| `--help` | off | Show usage and examples |
+
+A leg that fails is printed as `FAILED` with the reason, and a leg that settled
+without an answer (for example the search miner returning nothing readable) is
+labelled as paid with no answer. Failures are never dressed up as results. The
+search leg stays pinned to miner 303 (ChainSight), the one that answered on
+2026-11-09. Exit code is `0` when every leg answered, `1` when a leg failed and
+`2` when the arguments were wrong. Each leg costs about $0.01 USDC and counts
+against `PURSE_DAILY_CAP_USD`, so a full run is about $0.03 of the default
+$0.50 daily cap.
+
+**Scheduling (opt in, your choice).** The brief is safe to leave manual. If you
+want it on a timer, you decide the terms and you set the caps first, because a
+scheduled run buys without anyone watching. With the defaults above, three runs
+a day is about $0.09 of a $0.50 cap. Pick a cadence that keeps a quiet day well
+inside the cap, keep the wallet a burner with test USDC only, and check
+`purse_budget` (or the ledger) now and then so a stuck miner cannot drain the cap
+unnoticed. This repo installs no cron job and enables none: adding one is your
+call. If you use Hermes cron, the command is the same one you ran by hand:
+
+```bash
+# example only, not installed by this repo: 07:00 UTC daily
+0 7 * * * cd /path/to/telegraph-purse && node scripts/morning_brief.js >> ~/.telegraph-purse/brief.log 2>&1
+```
 
 ## Settings (`.env`)
 | Variable | Default | Meaning |
@@ -77,13 +121,13 @@ One JSON line per attempt. `status` is `paid`, `blocked` (a cap or the allow-lis
 ## Evidence (Season II, testnet)
 Autonomous purchases by a Hermes agent through Telegraph, paid in test USDC on Ethereum Sepolia from wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655`.
 
-Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.78, so exactly **22 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia — the 11 below from Nov 1 plus 11 from Nov 9 (weather proof, the two Morning Brief runs, and the search-miner probe tests). The ledger row count equals the on-chain transfer count.
+Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.65, so exactly **35 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia: the 11 from Nov 1 plus 24 from Nov 9 (weather proof, demo beats, the two Morning Brief runs, and search-miner probe tests). The number of settled ledger rows (paid + failed_paid) equals the on-chain transfer count.
 
 | Time (UTC) | Intent | Answer | Cost | Settlement |
 |---|---|---|---|---|
 | 2026-11-01 18:13:44 | `CRYPTO_PRICE_USD` BTC | $77,848.80 | 0.01 USDC | [0xb3d0bd7c…17a5](https://sepolia.etherscan.io/tx/0xb3d0bd7cfa2006bd504a228be96bb31bf59df53066714fed3fa50fcb535917a5) (block 12042724) |
 | 2026-11-01 18:22:47 | `CRYPTO_PRICE_USD` BTC | $77,810 | 0.01 USDC | [0x05af43d7…ebee](https://sepolia.etherscan.io/tx/0x05af43d7be0cd3fd9f6e60dde1eaa7a03afdefc88ba7744854b527290a34ebee) (block 12042769) |
-| 2026-11-01 18:42:11 | `CRYPTO_PRICE_USD` BTC | — | 0.01 USDC | [0x1b7dcc85…dbc5a](https://sepolia.etherscan.io/tx/0x1b7dcc85d42d7617dd6a0ff0573520b2e67b5898a6bb9a3c4258f187391dbc5a) (block 12042866) |
+| 2026-11-01 18:42:11 | `CRYPTO_PRICE_USD` BTC | n/a | 0.01 USDC | [0x1b7dcc85…dbc5a](https://sepolia.etherscan.io/tx/0x1b7dcc85d42d7617dd6a0ff0573520b2e67b5898a6bb9a3c4258f187391dbc5a) (block 12042866) |
 | 2026-11-01 18:14:42 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xd0031531…bff1](https://sepolia.etherscan.io/tx/0xd0031531978550abc63c11be7f0f7fdd7aafe33897a2f323b900fe294313bff1) (block 12042728) |
 | 2026-11-01 18:15:08 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0x2d960ee6…433d](https://sepolia.etherscan.io/tx/0x2d960ee6d554e160992af2d3e7b71b21f45415f80ac81ff899159257e126433d) (block 12042730) |
 | 2026-11-01 18:24:12 | `WEATHER_CHECK_TEMPERATURE` Lagos | HTTP 500 (tunnel 1033) | 0.01 USDC `failed_paid` | [0xa90f409d…0d0ba](https://sepolia.etherscan.io/tx/0xa90f409dff94395de44731547bf4428b3402165926239dd40a34887bec10d0ba) (block 12042776) |
@@ -97,7 +141,7 @@ Every row below is matched to its on-chain settlement: the wallet minted 5.00 te
 | 2026-11-09 11:01:05 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.8 °C (miner 20260821) | 0.01 USDC | [0x88a273bd…903dbd](https://sepolia.etherscan.io/tx/0x88a273bd228f8974408bb284b9fc80e627115eae885a20d09fd9fa8bdb903dbd) |
 | 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | paid; miner 303 returned no readable answer | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
 
-The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530 — `failed_paid`). Row 12 is the task-1 weather proof. Rows 13–15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
+The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530, recorded as `failed_paid`). Row 12 is the task-1 weather proof. Rows 13-15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
 
 ## Network (as of Nov 1, 2026; re-verified Nov 9)
 The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. `npm run setup` mints test USDC from that contract; the Anjoman faucet also gives it out. Re-verified Nov 9: the same Ethereum Sepolia settlement holds for the current devnode.

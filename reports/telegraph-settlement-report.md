@@ -25,7 +25,7 @@ All eight failed asks from that session settled. Each produced an on-chain trans
 | 2026-11-01 22:03:18 | HTTP 500, tunnel 1033 | 12043867 | 0xc453c8c76c6ccc8c7275855b79212e6e09303251dd20ec7a8d521936239dbe25 |
 | 2026-11-01 22:03:45 | HTTP 500, tunnel 1033 | 12043869 | 0xdad34aea6e9677ec7e1aec2f7f1baf00f8f90efd50f32d08696347208e6f2ff1 |
 
-All eight are verifiable on Etherscan Sepolia; the wallet balance math confirms 20 total 0.01 transfers = 11 settled payments (3 BTC paid + 8 weather failed-pays).
+All eight are verifiable on Etherscan Sepolia. That observation's Nov 1 subset was **11 settled 0.01 USDC transfers: 3 paid BTC buys plus these 8 failed_paid weather asks**. Dated observation, not the final history: the wallet has since settled further transfers, so the running total is larger than 11. The 11 above are the subset observed on 2026-11-01.
 
 ## 2. Impact on the client
 
