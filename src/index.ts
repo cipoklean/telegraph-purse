@@ -12,7 +12,7 @@ const err = (m: string) => ({ isError: true, content: [{ type: "text" as const, 
 const askShape = {
   query: z.string().optional().describe("Plain-language question; Telegraph picks the intent. Use when no intent fits."),
   intent: z.string().optional().describe("Canonical intent, e.g. CRYPTO_PRICE_USD, WEATHER_CHECK_TEMPERATURE, WEB_SEARCH_GENERAL"),
-  params: z.record(z.unknown()).optional().describe("Typed params for the intent, e.g. {symbol:'BTC'} or {location:'Lagos'}"),
+  params: z.record(z.string(), z.unknown()).optional().describe("Typed params for the intent, e.g. {symbol:'BTC'} or {location:'Lagos'}"),
   miner: z.string().optional().describe("Optional miner id or slug to pin this call to one miner (still bought through Telegraph). Leave empty to auto-route."),
   why: z.string().min(1, "why must not be empty").describe("One line: why fresh, paid data is needed instead of your own knowledge"),
 };
