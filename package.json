@@ -15,6 +15,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "test": "node --experimental-vm-modules --import tsx/esm --test test/*.test.ts",
     "probe": "tsx src/probe.ts",
     "setup": "npm run build && node dist/setup.js"
   },

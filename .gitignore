@@ -5,3 +5,5 @@ dist
 
 # demo runbook: local only, never pushed
 DEMO.md
+/demo/
+/scripts/demo_recording.js
