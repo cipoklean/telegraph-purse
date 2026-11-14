@@ -11,7 +11,7 @@ const err = (m: string) => ({ isError: true, content: [{ type: "text" as const, 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const askShape = {
-  query: z.string().optional().describe("Plain-language question; Telegraph picks the intent. Use when no intent fits."),
+  query: z.string().optional().describe("Plain-language question; Telegraph picks the intent. Refused while PURSE_ALLOWED_INTENTS is set; use intent + params then."),
   intent: z.string().optional().describe("Canonical intent, e.g. CRYPTO_PRICE_USD, WEATHER_CHECK_TEMPERATURE, WEB_SEARCH_GENERAL"),
   params: z.record(z.string(), z.unknown()).optional().describe("Typed params for the intent, e.g. {symbol:'BTC'} or {location:'Lagos'}"),
   miner: z.string().optional().describe("Optional miner id or slug to pin this call to one miner (still bought through Telegraph). Leave empty to auto-route."),

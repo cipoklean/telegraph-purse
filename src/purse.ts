@@ -136,6 +136,13 @@ export async function ask(i: AskInput) {
     record({ ts: isoNow(), status: "blocked", intent: i.intent, why: i.why, reason });
     throw new BudgetError(reason);
   }
+  if (!i.intent && config.allowedIntents.length) {
+    // The node reveals the routed intent only after payment, so a plain query cannot be
+    // checked against the allow-list before anything is signed. Fail closed instead.
+    const reason = "PURSE_ALLOWED_INTENTS is set, so only asks that name a canonical intent are allowed; resend with intent and params";
+    record({ ts: isoNow(), status: "blocked", query: i.query, params: i.params, why: i.why, reason });
+    throw new BudgetError(reason);
+  }
   // Serialized: the guard reads and the ledger write must be atomic with respect to other asks.
   return serialize(() => buy(i));
 }
