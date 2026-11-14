@@ -92,7 +92,7 @@ call. If you use Hermes cron, the command is the same one you ran by hand:
 | `TELEGRAPH_EVM_PRIVATE_KEY` | set by `npm run setup` | Burner wallet that pays. Never use a wallet with real funds. |
 | `PURSE_MAX_PER_CALL_USD` | `0.05` | Highest price one answer may cost |
 | `PURSE_DAILY_CAP_USD` | `0.50` | Most the purse spends per UTC day |
-| `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE` |
+| `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE`. Applies only to asks that name a canonical `intent`; a plain `query` ask is not checked against it |
 | `PURSE_TIMEOUT_MS` | `60000` | Give up on an answer after this long |
 | `PURSE_PIN_MINERS` | `WEATHER_CHECK_TEMPERATURE=20260821` | `intent=minerId` pairs sent to one miner via `/engine/v1/ask/{miner}`, still paid through Telegraph. Empty = auto-route |
 | `PURSE_LEDGER` | `~/.telegraph-purse/ledger.jsonl` | Where receipts are written |
@@ -121,7 +121,7 @@ One JSON line per attempt. `status` is `paid`, `blocked` (a cap or the allow-lis
 ## Evidence (Season II, testnet)
 Autonomous purchases by a Hermes agent through Telegraph, paid in test USDC on Ethereum Sepolia from wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655`.
 
-Every row below is matched to its on-chain settlement: the wallet minted 5.00 test USDC at setup (Oct 29) and now holds 4.65, so exactly **35 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` have settled on Sepolia: the 11 from Nov 1 plus 24 from Nov 9 (weather proof, demo beats, the two Morning Brief runs, and search-miner probe tests). The number of settled ledger rows (paid + failed_paid) equals the on-chain transfer count.
+Every row below is matched to its on-chain settlement: the wallet was funded with 5.00 test USDC on Oct 29 by an inbound transfer from a second test wallet (`0x050DE5D76AF708a7Be3FB421247f16b4CE527a28`), not by minting on this wallet. As of Nov 14 the wallet has sent **36 × 0.01 USDC transfers** to `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` on Sepolia: the 11 from Nov 1, the 24 from Nov 9 (weather proof, demo beats, the two Morning Brief runs, and search-miner probe tests), and one on Nov 11 that has no ledger row. Through Nov 9 the settled ledger rows (paid + failed_paid) matched the transfer count one-to-one. The wallet holds 0.64 USDC plus 0.08 credited to escrow on the payment contract — the eight `failed_paid` asks below.
 
 | Time (UTC) | Intent | Answer | Cost | Settlement |
 |---|---|---|---|---|
@@ -147,7 +147,7 @@ The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that se
 The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. `npm run setup` mints test USDC from that contract; the Anjoman faucet also gives it out. Re-verified Nov 9: the same Ethereum Sepolia settlement holds for the current devnode.
 
 ## Known issue found on Nov 1, 2026
-The weather miner's tunnel was down (Cloudflare error 1033). The node answered HTTP 500 but still settled the 0.01 USDC payment for those asks. The first version logged them as "not charged". The purse now records any failure after a signed payment as `failed_paid`, counts it against the caps, and the skill tells the agent not to retry that miner. Diagnosis: the router kept picking miner 0 (Lacre-Meteo), whose host returns Cloudflare 1033, although Telegraph's docs say payment settles only on success. Weather is now pinned to miner 20260821 (Amanat, Open-Meteo), which answered Lagos 28.7 °C on Nov 1 in a sandbox test. `purse_ask` also takes an optional `miner`.
+The weather miner's tunnel was down (Cloudflare error 1033). The node answered HTTP 500 but still settled the 0.01 USDC payment for those asks. The [x402 docs](https://anjoman.ai/docs/using/x402-inference) state that a paid request which fails is credited to escrow rather than kept as a charge: the wallet's `effectiveBalance` on the payment contract `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` held exactly 0.08 USDC on Nov 14 — those eight asks — withdrawable, not lost. The purse still records any failure after a signed payment as `failed_paid` and counts it against the caps, because the client signed a spend. Diagnosis: the router kept picking miner 0 (Lacre-Meteo), whose host returns Cloudflare 1033. Weather is now pinned to miner 20260821 (Amanat, Open-Meteo), which answered Lagos 28.7 °C on Nov 1 in a sandbox test. `purse_ask` also takes an optional `miner`.
 
 ## Status
 Testnet only. MCP server, Hermes skill, caps and receipts working end to end on a Hermes v0.22 agent.
