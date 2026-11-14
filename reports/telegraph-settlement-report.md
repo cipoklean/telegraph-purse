@@ -2,13 +2,13 @@
 
 **Date:** 2026-11-09
 **From:** Telegraph Purse (Hackathon Season II, Mission 09 — Personal Agent)
-**Topic:** The node settles payment even when the miner's upstream call fails (HTTP 500/530), contrary to the documented "pays only on success" contract.
+**Topic:** A paid request whose miner's upstream call fails (HTTP 500/530) still settles on-chain; per the x402 docs the amount is credited to the client's escrow balance on the payment contract rather than kept as a charge.
 
 ---
 
 ## 1. Observation
 
-On 2026-11-01, a Hermes agent asked for current Lagos temperature through the purse's `purse_ask` (`WEATHER_CHECK_TEMPERATURE`, params `{location: "Lagos"}`). The auto-router picked a weather miner whose upstream host was down (Cloudflare Tunnel error 1033, HTTP 530 surfaced as HTTP 500 by the node). The node returned an error — **but the 0.01 test USDC payment still settled on-chain.**
+On 2026-11-01, a Hermes agent asked for current Lagos temperature through the purse's `purse_ask` (`WEATHER_CHECK_TEMPERATURE`, params `{location: "Lagos"}`). The auto-router picked a weather miner whose upstream host was down (Cloudflare Tunnel error 1033, HTTP 530 surfaced as HTTP 500 by the node). The node returned an error — **but the 0.01 test USDC payment still settled on-chain.** Per the x402 docs, a paid request that fails is credited to escrow: the wallet's `effectiveBalance` on the payment contract held exactly 0.08 USDC on 2026-11-14 — these eight asks — withdrawable rather than lost.
 
 All eight failed asks from that session settled. Each produced an on-chain transfer of 0.01 USDC from the purse wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655` to the node's payment address `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b`.
 
@@ -30,12 +30,12 @@ All eight are verifiable on Etherscan Sepolia. That observation's Nov 1 subset w
 ## 2. Impact on the client
 
 - The agent-side purse records these as `failed_paid` — payment signed and settled, no answer returned. This status counts against the daily cap, so a client can't be farmed for free answers through failing miners.
-- The docs' wording implies a failed call should cost nothing. In practice the payment settled, so a client that treats "HTTP 5xx = not charged" will under-report spend.
+- The engine docs' wording implies a failed call should cost nothing. In practice the payment settled and was credited to escrow, so a client that treats "HTTP 5xx = not charged" under-reports spend, and one that treats it as a charge over-reports it, unless it reads its escrow balance.
 - The purse went further: the weather intent is now pinned to a working miner (`PURSE_PIN_MINERS=WEATHER_CHECK_TEMPERATURE=20260821`) to avoid paying for failures.
 
 ## 3. Suggested doc fix
 
-Clarify the settlement contract: a signed payment settles on the node regardless of the miner's upstream result; the client is charged when it signs, not when the miner succeeds. Encourage clients to treat any signed request as a spend (paid or `failed_paid`), and to pin known-good miners where available.
+Clarify the settlement contract in the engine-ask docs, which still say payment settles only on success: a signed payment settles on the node regardless of the miner's upstream result, and a failed paid request is credited to the client's escrow balance on the payment contract. Encourage clients to treat any signed request as a spend (paid or `failed_paid`), to check their escrow balance, and to pin known-good miners where available.
 
 ## 4. Second observation: chain mismatch with docs
 

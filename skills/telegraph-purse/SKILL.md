@@ -21,7 +21,7 @@ Buy only when the answer is live or recent and your own knowledge would be stale
 Never buy for: definitions, history, maths, code, drafting, or something you already answered in this conversation. Reuse a purchase from the last few minutes instead of buying again.
 
 ## Always use the purse for live data
-For the facts above, `purse_ask` is the only source. Do not fetch them yourself with curl, terminal commands, web or browser tools, or any free API, even if a past failure is in memory. Miner outages are temporary and the purse routes around them, so a failure earlier is never a reason to skip it now. If the purse fails, say so and answer from knowledge, labelled as possibly out of date.
+For the facts above, `purse_ask` is the only source. Do not fetch them yourself with curl, terminal commands, web or browser tools, or any free API, even if a past failure is in memory. Miner outages are temporary; the purse records a settled failure and will not retry the same miner, so a failure earlier is never a reason to skip it now. If the purse fails, say so and answer from knowledge, labelled as possibly out of date.
 
 ## How to buy
 1. Always fill `why` with one line on why live data is needed.
@@ -32,7 +32,7 @@ For the facts above, `purse_ask` is the only source. Do not fetch them yourself 
 ## When it fails
 - `BLOCKED by budget`: tell the user the cap was reached; don't retry. They can raise `PURSE_DAILY_CAP_USD` or `PURSE_MAX_PER_CALL_USD`.
 - `FAILED (not charged)`: say live data is unavailable right now and answer from your knowledge, clearly labelled as possibly out of date. Retry at most once.
-- `FAILED (paid, no answer)`: the payment settled but the miner returned nothing. Tell the user it cost money with no answer, and do NOT retry the same miner in this conversation. You may try once more with `miner` set to a different id from `purse_intents`, telling the user it costs another ~$0.01; otherwise answer from knowledge, labelled as possibly out of date.
+- `FAILED (paid, no answer)`: the payment settled but the miner returned nothing (the node credits failed paid requests to escrow). Tell the user it settled with no answer, and do NOT retry the same miner in this conversation. You may try once more with `miner` set to a different id from `purse_intents`, telling the user it costs another ~$0.01; otherwise answer from knowledge, labelled as possibly out of date.
 - `WEB_SEARCH_GENERAL` quality note (2026-11-09): most search miners currently return thin or off-topic answers (a single sourced `answer`/`brief`, sometimes unrelated to the query). Buy once, report what you got, and do not burn several $0.01 calls comparing miners — a search miner's answer is not a correctness oracle.
 
 ## Free tools
