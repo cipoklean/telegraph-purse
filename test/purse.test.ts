@@ -130,6 +130,7 @@ beforeEach(() => {
   freshLedger();
   setCaps(0.05, 0.5);
   config.timeoutMs = 1000;
+  config.allowedIntents = [];
 });
 
 afterEach(() => {
@@ -390,6 +391,38 @@ test("a whitespace-only why is refused before signing", async () => {
   assert.deepEqual(t.calls, []);
   assert.equal(ledger.readAll()[0].status, "blocked");
   assert.equal(ledger.spentTodayUsd(), 0);
+});
+
+test("an allow-list refuses a query-only ask before anything is sent", async () => {
+  config.allowedIntents = ["CRYPTO_PRICE_USD"];
+  const t = makeTransport({ amountUusdc: "50000" });
+  purse.setPaidTransport(t.fetch);
+
+  const err = await catchErr(purse.ask({ query: "what is the bitcoin price right now?", why: "need the live BTC price" }));
+
+  assert.ok(err instanceof purse.BudgetError, `expected BudgetError, got ${err.name}: ${err.message}`);
+  assert.match(err.message, /PURSE_ALLOWED_INTENTS/);
+  assert.deepEqual(t.calls, [], "nothing may be sent, not even the unpaid challenge probe");
+  const rows = ledger.readAll();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, "blocked");
+  assert.equal(rows[0].query, "what is the bitcoin price right now?");
+  assert.equal(ledger.spentTodayUsd(), 0);
+});
+
+test("an allow-list still allows the canonical intent it names", async () => {
+  config.allowedIntents = ["CRYPTO_PRICE_USD"];
+  const t = makeTransport({
+    amountUusdc: "50000",
+    paid: () => json200({ result: "ok", cost_usd: 0.05, miner_id: "m1" }),
+  });
+  purse.setPaidTransport(t.fetch);
+
+  const out: any = await purse.ask({ intent: "CRYPTO_PRICE_USD", params: { symbol: "BTC" }, why: "live price" });
+
+  assert.equal(out.result, "ok");
+  assert.equal(out.receipt.status, "paid");
+  assert.equal(ledger.spentTodayUsd(), 0.05);
 });
 
 test("quote reports per-call and daily cap booleans plus local spending", async () => {

@@ -92,7 +92,7 @@ call. If you use Hermes cron, the command is the same one you ran by hand:
 | `TELEGRAPH_EVM_PRIVATE_KEY` | set by `npm run setup` | Burner wallet that pays. Never use a wallet with real funds. |
 | `PURSE_MAX_PER_CALL_USD` | `0.05` | Highest price one answer may cost |
 | `PURSE_DAILY_CAP_USD` | `0.50` | Most the purse spends per UTC day |
-| `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE`. Applies only to asks that name a canonical `intent`; a plain `query` ask is not checked against it |
+| `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE`. When set, only those intents may be bought, and a plain `query` ask is refused: the node reveals the intent it routes to only after payment, so it cannot be checked against the list first |
 | `PURSE_TIMEOUT_MS` | `60000` | Give up on an answer after this long |
 | `PURSE_PIN_MINERS` | `WEATHER_CHECK_TEMPERATURE=20260821` | `intent=minerId` pairs sent to one miner via `/engine/v1/ask/{miner}`, still paid through Telegraph. Empty = auto-route |
 | `PURSE_LEDGER` | `~/.telegraph-purse/ledger.jsonl` | Where receipts are written |

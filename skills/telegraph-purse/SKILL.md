@@ -16,7 +16,7 @@ Buy only when the answer is live or recent and your own knowledge would be stale
 - Prices: `purse_ask` intent `CRYPTO_PRICE_USD`, params `{ "symbol": "BTC" }`
 - Weather now: intent `WEATHER_CHECK_TEMPERATURE`, params `{ "location": "Lagos, Nigeria" }` (add the country: plain "Lagos" can mean Lagos, Portugal)
 - Fresh web results: intent `WEB_SEARCH_GENERAL`, params `{ "query": "..." }`
-- Anything else live: `purse_ask` with a plain `query`, or check `purse_intents` first.
+- Anything else live: find the matching canonical intent with `purse_intents` and buy it with `intent` + `params`. A plain `query` is only accepted when the purse has no allow-list set; with `PURSE_ALLOWED_INTENTS` configured it is refused, because the node's routing cannot be checked against the list before payment.
 
 Never buy for: definitions, history, maths, code, drafting, or something you already answered in this conversation. Reuse a purchase from the last few minutes instead of buying again.
 
@@ -30,7 +30,7 @@ For the facts above, `purse_ask` is the only source. Do not fetch them yourself 
 4. In your reply, give the answer, then a short footer: cost, miner, and the receipt hash.
 
 ## When it fails
-- `BLOCKED by budget`: tell the user the cap was reached; don't retry. They can raise `PURSE_DAILY_CAP_USD` or `PURSE_MAX_PER_CALL_USD`.
+- `BLOCKED by budget`: tell the user the cap or the intent allow-list stopped it; don't retry. They can raise `PURSE_DAILY_CAP_USD` or `PURSE_MAX_PER_CALL_USD`, widen `PURSE_ALLOWED_INTENTS`, or resend with a canonical `intent` + `params`.
 - `FAILED (not charged)`: say live data is unavailable right now and answer from your knowledge, clearly labelled as possibly out of date. Retry at most once.
 - `FAILED (paid, no answer)`: the payment settled but the miner returned nothing (the node credits failed paid requests to escrow). Tell the user it settled with no answer, and do NOT retry the same miner in this conversation. You may try once more with `miner` set to a different id from `purse_intents`, telling the user it costs another ~$0.01; otherwise answer from knowledge, labelled as possibly out of date.
 - `WEB_SEARCH_GENERAL` quality note (2026-11-09): most search miners currently return thin or off-topic answers (a single sourced `answer`/`brief`, sometimes unrelated to the query). Buy once, report what you got, and do not burn several $0.01 calls comparing miners — a search miner's answer is not a correctness oracle.
