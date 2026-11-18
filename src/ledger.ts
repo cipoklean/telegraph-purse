@@ -17,6 +17,8 @@ export interface Entry {
   receipt_hash?: string;
   tx_hash?: string;
   epoch_id?: number;
+  rail?: string;
+  settlement?: string;
   reason?: string;
 }
 

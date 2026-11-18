@@ -131,6 +131,7 @@ beforeEach(() => {
   setCaps(0.05, 0.5);
   config.timeoutMs = 1000;
   config.allowedIntents = [];
+  config.scheme = "x402";
 });
 
 afterEach(() => {
@@ -454,4 +455,97 @@ test("quote flags a price under the per-call cap but over the remaining daily bu
   assert.equal(q.within_caps, false, "the combined boolean must reflect the daily cap");
   assert.equal(q.spent_today_usd, 0.05);
   assert.equal(q.remaining_daily_usd, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Escrow rail
+// ---------------------------------------------------------------------------
+
+const ESCROW_TEMPLATE = (amt: string) =>
+  `Telegraph Escrow Payment\n\nWallet: {from}\nPay To: ${PAY_TO}\nNetwork: eip155:11155111\nAmount: ${amt} uUSDC\nResource: /v1/ask\nNonce: {nonce}\nValid After: {validAfter}\nValid Before: {validBefore}`;
+
+function escrowChallenge(amountUusdc = "50000") {
+  return {
+    error: "payment required",
+    accepts: [{
+      scheme: "escrow", network: config.evmNetwork, payTo: PAY_TO, price: "$0.05",
+      extra: { message: ESCROW_TEMPLATE(amountUusdc), resource: "/v1/ask", signWith: "personal_sign (EIP-191)" },
+    }],
+  };
+}
+
+function escrowTransport(h: TransportHandlers): { fetch: typeof fetch; calls: string[]; payments: any[] } {
+  const calls: string[] = [];
+  const payments: any[] = [];
+  const f = async (input: any, init?: any): Promise<Response> => {
+    const req = new Request(input, init);
+    const xp = req.headers.get("X-PAYMENT");
+    if (!xp) {
+      calls.push("unpaid");
+      return new Response(JSON.stringify(escrowChallenge(h.amountUusdc)), { status: 402, headers: { "content-type": "application/json" } });
+    }
+    calls.push("paid");
+    payments.push(JSON.parse(Buffer.from(xp, "base64").toString("utf8")));
+    if (!h.paid) throw new Error("test transport: no paid handler configured");
+    return h.paid(req, req.signal);
+  };
+  return { fetch: f, calls, payments };
+}
+
+test("escrow rail signs X-PAYMENT and records rail=escrow receipt", async () => {
+  config.scheme = "escrow";
+  const receipt = { receipt_hash: "0xrcpt", rail: "escrow", payer: "0xabc", miner: "302", intent: "CRYPTO_PRICE_USD", amount_uusdc: "50000", epoch_id: 2107, settlement: "epoch", chain: "telegraph" };
+  const t = escrowTransport({
+    amountUusdc: "50000",
+    paid: () => json200(
+      { result: "74000", miner_id: "302", miner_name: "miner", cost_usd: 0.05, duration_ms: 9, signal_hash: "0xsig" },
+      { "X-PAYMENT-RESPONSE": b64(receipt) },
+    ),
+  });
+  purse.setPaidTransport(t.fetch);
+
+  const out: any = await purse.ask({ intent: "CRYPTO_PRICE_USD", params: { symbol: "BTC" }, why: "live price via escrow" });
+
+  assert.deepEqual(t.calls, ["unpaid", "paid"]);
+  const pay = t.payments[0];
+  assert.equal(pay.scheme, "escrow");
+  assert.equal(pay.x402Version, 2);
+  assert.ok(pay.payload.signature.startsWith("0x"), "an EIP-191 signature must be present");
+  assert.equal(pay.payload.authorization.value, "50000");
+  assert.equal(pay.payload.authorization.to, PAY_TO);
+  assert.equal(out.receipt.status, "paid");
+  assert.equal(out.receipt.rail, "escrow");
+  assert.equal(out.receipt.settlement, "epoch");
+  assert.equal(out.receipt.epoch_id, 2107);
+  assert.equal(out.receipt.receipt_hash, "0xrcpt");
+});
+
+test("escrow guard blocks before anything is signed", async () => {
+  config.scheme = "escrow";
+  const t = escrowTransport({ amountUusdc: "500000" }); // $0.50, over the $0.05 per-call cap
+  purse.setPaidTransport(t.fetch);
+
+  const err = await catchErr(purse.ask({ intent: "CRYPTO_PRICE_USD", why: "over-cap probe" }));
+
+  assert.ok(err instanceof purse.BudgetError, `expected BudgetError, got ${err.name}`);
+  assert.match(err.message, /per-call cap/);
+  assert.deepEqual(t.calls, ["unpaid"], "the signed retry must never leave");
+  const rows = ledger.readAll();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, "blocked");
+});
+
+test("escrow default falls back to x402 when the node offers no escrow entry", async () => {
+  config.scheme = "escrow";
+  const t = makeTransport({
+    amountUusdc: "50000",
+    paid: () => json200({ result: "1", cost_usd: 0.05, miner_id: "m1", duration_ms: 5 }),
+  });
+  purse.setPaidTransport(t.fetch);
+
+  const out: any = await purse.ask({ intent: "CRYPTO_PRICE_USD", params: { symbol: "BTC" }, why: "fallback check" });
+
+  assert.equal(out.receipt.status, "paid");
+  // unpaid challenge read by the escrow wrapper, then the x402 wrapper's own challenge + paid retry
+  assert.deepEqual(t.calls, ["unpaid", "unpaid", "paid"]);
 });

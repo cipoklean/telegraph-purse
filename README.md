@@ -4,7 +4,7 @@ A capped USDC purse that lets a personal agent (Hermes, or any MCP client) buy l
 
 **Why:** an agent with a raw wallet can overspend, buy things it already knows, and leave no trail. The purse adds the three things a person needs before handing an agent money:
 
-1. **Caps**: a per-call and a daily limit, checked after Telegraph's price challenge and before anything is signed. A second, hard per-payment cap sits in the x402 client itself.
+1. **Caps**: a per-call and a daily limit, checked after Telegraph's price challenge and before anything is signed. A second, hard per-payment cap sits in the payment client itself, on both rails (x402 per-call settlement and escrow epoch settlement).
 2. **Policy**: a Hermes skill that only buys live facts (prices, weather now, fresh search) and requires a one-line `why` for every purchase.
 3. **Receipts**: every purchase, block and failure lands in a local ledger with intent, miner, cost, latency, signal hash, Telegraph receipt hash and settlement tx.
 
@@ -96,6 +96,7 @@ call. If you use Hermes cron, the command is the same one you ran by hand:
 | `PURSE_TIMEOUT_MS` | `60000` | Give up on an answer after this long |
 | `PURSE_PIN_MINERS` | `WEATHER_CHECK_TEMPERATURE=20260821` | `intent=minerId` pairs sent to one miner via `/engine/v1/ask/{miner}`, still paid through Telegraph. Empty = auto-route |
 | `PURSE_LEDGER` | `~/.telegraph-purse/ledger.jsonl` | Where receipts are written |
+| `PURSE_SCHEME` | `escrow` | Payment rail: `escrow` (sign per call, settle per epoch; no facilitator; x402 fallback), `x402` (per-call on-chain), `escrow-only` (never fall back) |
 | `TELEGRAPH_NODE_URL` | `https://devnode.telegraphprotocol.com` | Telegraph node |
 
 Hermes can add its own per-chat limit on top, in the same `purse:` entry:
@@ -117,6 +118,8 @@ One JSON line per attempt. `status` is `paid`, `blocked` (a cap or the allow-lis
  "tx_hash":"0xb3d0bd7cfa2006bd504a228be96bb31bf59df53066714fed3fa50fcb535917a5","epoch_id":1969}
 ```
 `duration_ms` is the node's reported answer time; the agent-side round trip, including payment, is longer.
+
+On the default `escrow` rail a `paid` row carries `rail: "escrow"`, `settlement: "epoch"` and an `epoch_id`, but no `tx_hash`: nothing touches the chain per call. The purchase is provable after the epoch closes at `GET /v1/blocks/{epoch_id}/deliveries/{receipt_hash}` on the node, which returns the delivery row, a Merkle proof and the block's `deliveries_root`. Escrow needs one up-front deposit (`approve` + `LedgerFacet.depositUSDC(amount)` on the Diamond the node's 402 names as `payTo`); spend is readable at `GET /v1/ledger/account/{wallet}`.
 
 ## Evidence (Season II, testnet)
 Autonomous purchases by a Hermes agent through Telegraph, paid in test USDC on Ethereum Sepolia from wallet `0x51b0228bd9B8BF78CEDB11Cb485BA9F80cCf4655`.

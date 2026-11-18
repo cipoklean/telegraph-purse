@@ -1,5 +1,6 @@
 import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
+import { wrapFetchWithEscrow } from "./escrow.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
 import { sepolia } from "viem/chains";
@@ -27,6 +28,7 @@ export function account() {
  */
 let transport: typeof fetch = fetch;
 let paidFetch: typeof fetch | null = null;
+let escrowFetch: typeof fetch | null = null;
 let lastBlock: string | null = null;
 /**
  * Price of the payment signed for the current ask, if any.
@@ -56,11 +58,26 @@ function serialize<T>(fn: () => Promise<T>): Promise<T> {
 export function setPaidTransport(f: typeof fetch | null): void {
   transport = f ?? fetch;
   paidFetch = null; // rebuild the cached x402 wrapper against the new transport
+  escrowFetch = null;
 }
 
 /** The transport currently wired beneath the x402 wrapper; used to assert default wiring. */
 export function paidTransport(): typeof fetch {
   return transport;
+}
+
+/**
+ * The shared spend guard: returns the block reason, or null and records the
+ * signed price. Runs on either rail after the 402 challenge is read and before
+ * anything is signed.
+ */
+function checkSpend(usd: number): string | null {
+  const left = config.dailyCapUsd - spentTodayUsd();
+  if (usd > config.maxPerCallUsd) return (lastBlock = `price $${usd} is above the per-call cap $${config.maxPerCallUsd}`);
+  if (usd > left) return (lastBlock = `price $${usd} is above today's remaining budget $${left.toFixed(4)}`);
+  lastBlock = null;
+  signedUsd = usd;
+  return null;
 }
 
 function getPaidFetch() {
@@ -75,15 +92,32 @@ function getPaidFetch() {
   // required by the interface even though the body only returns.
   // eslint-disable-next-line @typescript-eslint/require-await
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
-    const usd = Number(selectedRequirements.amount) / 1e6;
-    const left = config.dailyCapUsd - spentTodayUsd();
-    if (usd > config.maxPerCallUsd) lastBlock = `price $${usd} is above the per-call cap $${config.maxPerCallUsd}`;
-    else if (usd > left) lastBlock = `price $${usd} is above today's remaining budget $${left.toFixed(4)}`;
-    else { lastBlock = null; signedUsd = usd; return; }
-    return { abort: true as const, reason: lastBlock };
+    const reason = checkSpend(Number(selectedRequirements.amount) / 1e6);
+    return reason ? { abort: true as const, reason } : undefined;
   });
   paidFetch = wrapFetchWithPayment(transport, client);
   return paidFetch;
+}
+
+function getEscrowFetch() {
+  if (!escrowFetch) escrowFetch = wrapFetchWithEscrow(transport, () => account(), checkSpend);
+  return escrowFetch;
+}
+
+/**
+ * The paid transport buys go through. Default ("escrow") tries the escrow rail
+ * first and falls back to x402 when the node still answers 402 — escrow is
+ * unfunded, unpriced or not offered. Escrow signatures are never billed on a
+ * refused request, so the fallback never double-charges.
+ */
+function payFetch(): typeof fetch {
+  if (config.scheme === "x402") return getPaidFetch();
+  const esc = getEscrowFetch();
+  if (config.scheme === "escrow-only") return esc;
+  return async (input: any, init?: any) => {
+    const r = await esc(input, init);
+    return r.status === 402 ? getPaidFetch()(input, init) : r;
+  };
 }
 
 async function withTimeout<T>(f: (s: AbortSignal) => Promise<T>): Promise<T> {
@@ -110,8 +144,11 @@ export async function quote(i: AskInput) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: body(i), signal,
   }));
   if (res.status !== 402) return { status: res.status, body: (await res.text()).slice(0, 1500) };
-  const ch = b64json(res.headers.get("PAYMENT-REQUIRED"));
-  const accepts = (ch?.accepts || []).map((a: any) => ({ network: a.network, usd: Number(a.amount) / 1e6, payTo: a.payTo }));
+  const ch = b64json(res.headers.get("PAYMENT-REQUIRED")) || await res.clone().json().catch(() => undefined);
+  const accepts = (ch?.accepts || []).map((a: any) => ({
+    scheme: a.scheme, network: a.network, payTo: a.payTo,
+    usd: a.amount !== undefined ? Number(a.amount) / 1e6 : Number(String(a.price).replace(/[^\d.]/g, "")),
+  }));
   const withinPerCall = accepts.some((a: any) => a.usd <= config.maxPerCallUsd);
   const withinDaily = accepts.some((a: any) => a.usd <= remaining);
   return {
@@ -164,7 +201,7 @@ async function buy(i: AskInput) {
 
   let res: Response;
   try {
-    res = await withTimeout((signal) => getPaidFetch()(askUrl(i), {
+    res = await withTimeout((signal) => payFetch()(askUrl(i), {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: body(i), signal,
     }));
   } catch (e: any) {
@@ -197,7 +234,7 @@ async function buy(i: AskInput) {
   if (!res.ok) {
     const reason = `HTTP ${res.status}: ${text.slice(0, 300)}`;
     // The node can settle the payment even when the miner's upstream fails, so a signed payment counts as spent.
-    const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
+    const settle = b64json(res.headers.get("PAYMENT-RESPONSE")) || b64json(res.headers.get("X-PAYMENT-RESPONSE"));
     const signed = signedUsdNow();
     if (signed !== null) return paidFailure(`$${signed} was paid but no answer came back. ${reason}`, settle);
     record({ ...base, reason, duration_ms: Date.now() - t0 });
@@ -215,8 +252,10 @@ async function buy(i: AskInput) {
     throw new Error(reason);
   }
 
-  const receipt = b64json(res.headers.get("X-TELEGRAPH-RECEIPT"));
-  const settle = b64json(res.headers.get("PAYMENT-RESPONSE"));
+  // On the escrow rail the same receipt object rides X-PAYMENT-RESPONSE; on x402
+  // that header is the settlement record and the receipt is X-TELEGRAPH-RECEIPT.
+  const settle = b64json(res.headers.get("PAYMENT-RESPONSE")) || b64json(res.headers.get("X-PAYMENT-RESPONSE"));
+  const receipt = b64json(res.headers.get("X-TELEGRAPH-RECEIPT")) || settle;
   const entry: Entry = {
     ...base, status: "paid",
     intent: receipt?.intent || data.intent || i.intent,
@@ -225,6 +264,7 @@ async function buy(i: AskInput) {
     duration_ms: data.duration_ms ?? Date.now() - t0,
     signal_hash: data.signal_hash, receipt_hash: receipt?.receipt_hash,
     tx_hash: receipt?.tx_hash || settle?.transaction, epoch_id: receipt?.epoch_id,
+    rail: receipt?.rail, settlement: receipt?.settlement,
   };
   record(entry);
   signedUsd = null;
