@@ -1,12 +1,74 @@
 # Telegraph Purse
 
-A capped USDC purse that lets a personal agent (Hermes, or any MCP client) buy live intelligence from the [Telegraph](https://telegraphprotocol.com) network instead of guessing. Built for Telegraph Hackathon Season II, Mission 09: Personal Agent.
+**Give your agent a wallet it can't overspend.**
 
-**Why:** an agent with a raw wallet can overspend, buy things it already knows, and leave no trail. The purse adds the three things a person needs before handing an agent money:
+A capped USDC purse that lets a personal agent (Hermes, or any MCP client) buy
+live facts from the [Telegraph](https://telegraphprotocol.com) network instead
+of guessing. Built for **Telegraph Hackathon Season II — Apps & Agents,
+Mission 09: Personal Agent**.
 
-1. **Caps**: a per-call and a daily limit, checked after Telegraph's price challenge and before anything is signed. A second, hard per-payment cap sits in the payment client itself, on both rails (x402 per-call settlement and escrow epoch settlement).
-2. **Policy**: a Hermes skill that only buys live facts (prices, weather now, fresh search) and requires a one-line `why` for every purchase.
-3. **Receipts**: every purchase, block and failure lands in a local ledger with intent, miner, cost, latency, signal hash, Telegraph receipt hash and settlement tx.
+- **On-chain proof:** [Evidence table](#evidence-season-ii-testnet) — every row links its Sepolia settlement
+- **Bug report filed with Telegraph:** [reports/telegraph-settlement-report.md](reports/telegraph-settlement-report.md)
+- **Agent policy:** [skills/telegraph-purse/SKILL.md](skills/telegraph-purse/SKILL.md)
+
+---
+
+## The Problem & Insight
+
+Telegraph sells live answers (prices, weather, search) for about $0.01 each, paid
+per call over x402. That is exactly what a personal agent needs: a fact it
+cannot know from training data. But handing an agent a raw wallet means it can
+overspend, buy things it already knows, and leave no trail.
+
+The purse sits between the agent and the payment, and adds the three things a
+person needs before letting an agent spend:
+
+1. **Caps** — a per-call and a daily limit, checked *after* Telegraph's price
+   challenge and *before* anything is signed. A second hard per-payment cap sits
+   inside the payment client itself, on both rails.
+2. **Policy** — a Hermes skill that only buys live facts (prices, weather now,
+   fresh search) and requires a one-line `why` for every purchase.
+3. **Receipts** — every purchase, block and failure lands in a local ledger with
+   intent, miner, cost, latency, signal hash, Telegraph receipt hash and
+   settlement reference.
+
+---
+
+## Spending Rules
+
+The purse fails closed. A judge or user can check each rule in `src/purse.ts`
+and `test/purse.test.ts`:
+
+- **Nothing is signed over the cap.** The price comes from the node's 402
+  challenge; the cap check runs before the signature.
+- **A signed failure is still a spend.** If a payment was signed and no answer
+  came back, the row is `failed_paid` and it counts against the caps. Found the
+  hard way: the node settled 8 failed weather asks on Nov 1.
+- **Allow-list means allow-list.** With `PURSE_ALLOWED_INTENTS` set, a plain
+  `query` ask is refused, because the node only reveals the routed intent after
+  payment.
+- **One ask at a time.** Asks are serialized, so two parallel calls cannot both
+  pass the daily cap.
+- **Pinned miners still pay through Telegraph.** `PURSE_PIN_MINERS` routes to a
+  known-good miner via `/engine/v1/ask/{miner}`; the app never calls a miner directly.
+- **Burner wallets only, no schedules installed.** Setup generates a fresh
+  wallet; this repo adds no cron job.
+
+---
+
+## Verified on Testnet
+
+| What | Result |
+|---|---|
+| First Season II paid buy | 2026-11-01 18:13 UTC, BTC $77,848.80, 0.01 USDC, [tx 0xb3d0bd7c…](https://sepolia.etherscan.io/tx/0xb3d0bd7cfa2006bd504a228be96bb31bf59df53066714fed3fa50fcb535917a5) |
+| On-chain settlements from the agent wallet | **36 × 0.01 USDC** to Telegraph's payment contract through Nov 14 |
+| Intents bought by the agent | `CRYPTO_PRICE_USD`, `WEATHER_CHECK_TEMPERATURE`, `WEB_SEARCH_GENERAL` |
+| Escrow rail (default since Nov 18) | Live ask settled in epoch 12, 367 ms, no facilitator |
+| Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md) |
+| Agent | Hermes v0.22 on an Oracle Cloud ARM VM, purse as an MCP server |
+| Tests | 36 offline tests + typecheck in GitHub Actions; no wallet or network needed |
+
+---
 
 ## What it looks like
 ```text
@@ -31,60 +93,93 @@ Cost $0.01 · miner Cp Coingecko (#190070) · receipt 0x1e6ea5f7e11607d3…8a089
 | `purse_intents` | free | Intents with live miners, or one intent's params |
 | `purse_verify` | free | Look up a purchase's signal on the node |
 
-## Run
+---
+
+## Architecture
+
+```text
+Hermes agent (or any MCP client)
+  │  skills/telegraph-purse/SKILL.md   policy: live facts only, a `why` for every buy
+  ▼
+src/index.ts      MCP server (stdio): purse_ask, purse_quote, purse_budget, ...
+  ▼
+src/purse.ts      quote → cap check → sign → ask → record     (serialized, fails closed)
+  ├─► src/escrow.ts   escrow rail: EIP-191 signature, settled per epoch   (default)
+  ├─► @x402/fetch     x402 rail: per-call on-chain settlement             (fallback)
+  └─► src/ledger.ts   JSONL receipts → caps read today's spend from here
+  ▼
+Telegraph node  devnode.telegraphprotocol.com  →  miner  →  answer + receipt hash
+  ▼
+Ethereum Sepolia  test USDC settlement (tx hash, or epoch + Merkle proof)
+```
+
+### Repository Map
+
+| Path | Purpose |
+|---|---|
+| `src/index.ts` | MCP server: registers the 7 tools |
+| `src/purse.ts` | Core: quote, cap checks, payment, ask, verify, balance |
+| `src/escrow.ts` | Escrow payment rail (sign per call, settle per epoch) |
+| `src/ledger.ts` | Receipt ledger and today's-spend totals |
+| `src/config.ts` | `.env` settings and defaults |
+| `src/setup.ts` | `npm run setup`: build, burner wallet, test USDC, Hermes skill |
+| `src/probe.ts` | `npm run probe`: free smoke test, no spend |
+| `skills/telegraph-purse/SKILL.md` | Hermes skill: when to buy, when not to, how to report |
+| `scripts/morning_brief.js` | Optional CLI: three live facts in one run |
+| `reports/telegraph-settlement-report.md` | Settled-on-failure and chain-mismatch report for Telegraph |
+| `test/` | Offline tests for caps, ledger, rails and the brief |
+
+---
+
+## Quick Start
+
 Requires Node 20+.
+
+### 1. Verify without a wallet (1 minute)
+
 ```bash
 git clone https://github.com/cipoklean/telegraph-purse.git && cd telegraph-purse
-npm install
+npm ci
+npm test        # offline: caps, ledger, rails, brief
+npm run probe   # free: live intents and price quotes from the node, no spend
+```
+
+### 2. Make a paid buy with Hermes
+
+```bash
 npm run setup   # builds, makes a burner wallet in .env, mints 5 test USDC if it has Sepolia ETH,
                 # installs the Hermes skill and prints the MCP entry to paste
-npm run probe   # free smoke test: live intents + price quotes
 ```
-No Sepolia ETH yet? Send the printed address a little from any Sepolia faucet and run `npm run setup` again. Then paste the printed `purse:` entry under `mcp_servers:` in `~/.hermes/config.yaml` and run `hermes mcp test purse`.
 
-## Morning Brief (optional, manual)
-`scripts/morning_brief.js` buys three live facts in one run (a crypto price, a
-current temperature, one fresh web search) and prints one brief with a receipt
-line per leg. It is a CLI: importing it does nothing, and nothing is bought
-until you run it. Build first, because it loads the purse from `dist/`:
+No Sepolia ETH yet? Send the printed address a little from any Sepolia faucet
+and run `npm run setup` again. Paste the printed `purse:` entry under
+`mcp_servers:` in `~/.hermes/config.yaml`, then:
+
+```bash
+hermes mcp test purse   # expect 7 tools
+```
+
+Ask Hermes *"what's the temperature in Lagos right now?"* and check the new
+`paid` row in `~/.telegraph-purse/ledger.jsonl`.
+
+### 3. Morning Brief (optional)
+
+Buys a crypto price, a temperature and one web search in a single run (~$0.03),
+with a receipt line per leg.
 
 ```bash
 npm run build
-node scripts/morning_brief.js --dry-run      # show the plan; no wallet, no request, no spend
-node scripts/morning_brief.js                # buy the three default facts (about $0.03 total)
-node scripts/morning_brief.js --help         # every option
+node scripts/morning_brief.js --dry-run   # show the plan; no wallet, no spend
+node scripts/morning_brief.js             # buy the three facts
+node scripts/morning_brief.js --help      # --symbol, --location, --query
 ```
 
-| Option | Default | Effect |
-|---|---|---|
-| `--symbol` | `BTC` | Symbol for the `CRYPTO_PRICE_USD` leg |
-| `--location` | `Lagos, Nigeria` | Place for `WEATHER_CHECK_TEMPERATURE`. The country is included because plain `Lagos` also matches Lagos, Portugal |
-| `--query` | `AI news today` | Query for `WEB_SEARCH_GENERAL` |
-| `--dry-run` | off | Print the intents and params that would be bought. States plainly that no request was made. Does not load a wallet or call `purse.ask` |
-| `--help` | off | Show usage and examples |
+A failed leg prints `FAILED` with the reason, never a made-up answer. Exit code
+`0` all answered, `1` a leg failed, `2` bad arguments. Nothing is scheduled by
+this repo; if you put it on a timer, set the caps first, since a scheduled run
+buys with nobody watching.
 
-A leg that fails is printed as `FAILED` with the reason, and a leg that settled
-without an answer (for example the search miner returning nothing readable) is
-labelled as paid with no answer. Failures are never dressed up as results. The
-search leg stays pinned to miner 303 (ChainSight), the one that answered on
-2026-11-09. Exit code is `0` when every leg answered, `1` when a leg failed and
-`2` when the arguments were wrong. Each leg costs about $0.01 USDC and counts
-against `PURSE_DAILY_CAP_USD`, so a full run is about $0.03 of the default
-$0.50 daily cap.
-
-**Scheduling (opt in, your choice).** The brief is safe to leave manual. If you
-want it on a timer, you decide the terms and you set the caps first, because a
-scheduled run buys without anyone watching. With the defaults above, three runs
-a day is about $0.09 of a $0.50 cap. Pick a cadence that keeps a quiet day well
-inside the cap, keep the wallet a burner with test USDC only, and check
-`purse_budget` (or the ledger) now and then so a stuck miner cannot drain the cap
-unnoticed. This repo installs no cron job and enables none: adding one is your
-call. If you use Hermes cron, the command is the same one you ran by hand:
-
-```bash
-# example only, not installed by this repo: 07:00 UTC daily
-0 7 * * * cd /path/to/telegraph-purse && node scripts/morning_brief.js >> ~/.telegraph-purse/brief.log 2>&1
-```
+---
 
 ## Settings (`.env`)
 | Variable | Default | Meaning |
@@ -146,11 +241,36 @@ Every row below is matched to its on-chain settlement: the wallet was funded wit
 
 The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530, recorded as `failed_paid`). Row 12 is the task-1 weather proof. Rows 13-15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
 
-## Network (as of Nov 1, 2026; re-verified Nov 9)
-The live devnode charges in Telegraph test USDC `0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia** (`eip155:11155111`), not Base Sepolia as parts of the docs say. `npm run setup` mints test USDC from that contract; the Anjoman faucet also gives it out. Re-verified Nov 9: the same Ethereum Sepolia settlement holds for the current devnode.
+---
 
-## Known issue found on Nov 1, 2026
-The weather miner's tunnel was down (Cloudflare error 1033). The node answered HTTP 500 but still settled the 0.01 USDC payment for those asks. The [x402 docs](https://anjoman.ai/docs/using/x402-inference) state that a paid request which fails is credited to escrow rather than kept as a charge: the wallet's `effectiveBalance` on the payment contract `0x3624EB012B5E998BB57B6bE6C9Cfc9c4bc5eb99b` held exactly 0.08 USDC on Nov 14 — those eight asks — withdrawable, not lost. The purse still records any failure after a signed payment as `failed_paid` and counts it against the caps, because the client signed a spend. Diagnosis: the router kept picking miner 0 (Lacre-Meteo), whose host returns Cloudflare 1033. Weather is now pinned to miner 20260821 (Amanat, Open-Meteo), which answered Lagos 28.7 °C on Nov 1 in a sandbox test. `purse_ask` also takes an optional `miner`.
+## Network
 
-## Status
-Testnet only. MCP server, Hermes skill, caps and receipts working end to end on a Hermes v0.22 agent.
+The live devnode charges in Telegraph test USDC
+`0xcc194e1a843B658526D0D5C431f670028582Ae17` on **Ethereum Sepolia**
+(`eip155:11155111`), not Base Sepolia as parts of the docs say (verified Nov 1,
+re-verified Nov 9). `npm run setup` mints from that contract; the Anjoman faucet
+also gives it out.
+
+## Known Issue: settled on failure
+
+On Nov 1 the auto-routed weather miner's tunnel was down (Cloudflare 1033). The
+node answered HTTP 500 but still settled 0.01 USDC for each of 8 asks. Per the
+[x402 docs](https://anjoman.ai/docs/using/x402-inference) a failed paid request
+is credited to escrow: the wallet's `effectiveBalance` on the payment contract
+held exactly 0.08 USDC on Nov 14, withdrawable. The purse still counts these as
+spend (`failed_paid`), and weather is now pinned to miner 20260821 (Amanat,
+Open-Meteo). Full write-up: [reports/telegraph-settlement-report.md](reports/telegraph-settlement-report.md).
+
+---
+
+## Who it's for and what it costs
+
+For anyone running a personal agent that should look things up live but must
+never spend without limits or leave no trail. Each fact costs about $0.01 in
+test USDC; the default daily cap is $0.50, so a heavy day of lookups stays under
+fifty cents. Testnet only today: MCP server, Hermes skill, caps and receipts
+work end to end on a Hermes v0.22 agent.
+
+## License
+
+[MIT](LICENSE)
