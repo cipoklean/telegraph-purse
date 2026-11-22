@@ -622,10 +622,10 @@ test("an escrow template with an unfilled placeholder is never signed", async ()
   const base = escrowChallenge("50000");
   const bad = { ...base, accepts: [{ ...base.accepts[0], extra: { ...base.accepts[0].extra, message: ESCROW_TEMPLATE("50000") + "\nDeadline: {deadline}" } }] };
   const calls: string[] = [];
-  const t = async (input: any, init?: any): Promise<Response> => {
+  const t = (input: any, init?: any): Promise<Response> => {
     const req = new Request(input, init);
     calls.push(req.headers.has("X-PAYMENT") ? "paid" : "unpaid");
-    return new Response(JSON.stringify(bad), { status: 402, headers: { "content-type": "application/json" } });
+    return Promise.resolve(new Response(JSON.stringify(bad), { status: 402, headers: { "content-type": "application/json" } }));
   };
   purse.setPaidTransport(t);
 
