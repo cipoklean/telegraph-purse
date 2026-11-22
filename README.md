@@ -78,7 +78,7 @@ and `test/purse.test.ts`:
 | On-chain settlements from the agent wallet | **36 × 0.01 USDC** to Telegraph's payment contract through Nov 14 |
 | Intents bought by the agent | `CRYPTO_PRICE_USD`, `WEATHER_CHECK_TEMPERATURE`, `WEB_SEARCH_GENERAL`, `DNS_RECORD_LOOKUP_GENERAL`, `FX_NOW_EUR`, `CONTENT_EXTRACTION_GENERAL`, `CHAT_COMPLETION_GENERAL` |
 | Escrow rail (default since Nov 18) | Live asks settled in epochs 12, 36 and 37, ~400–1,200 ms, no facilitator — [rows](#escrow-rail-nov-1822) |
-| Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md) |
+| Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md). 3 more web searches (miner 302, Nov 18 19:48 UTC) are recorded as `failed_paid` in the ledger but show no Sepolia transfer, so the purse's lifetime total may over-count them by 0.03 USDC |
 | Agent | Hermes v0.22 on an Oracle Cloud ARM VM, purse as an MCP server |
 | Tests | 50 offline tests + typecheck in GitHub Actions; no wallet or network needed |
 
