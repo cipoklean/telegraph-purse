@@ -18,7 +18,7 @@ const askShape = {
   why: z.string().min(1, "why must not be empty").describe("One line: why fresh, paid data is needed instead of your own knowledge"),
 };
 
-server.tool("purse_ask", "Buy one answer from the Telegraph network with USDC (x402). Enforces per-call and daily caps and records a receipt. Only for live or fresh facts.", askShape, async (a) => {
+server.tool("purse_ask", "Buy one answer from the Telegraph network with USDC (escrow rail, x402 fallback). Enforces per-call and daily caps and records a receipt. Only for live or fresh facts.", askShape, async (a) => {
   if (!a.query && !a.intent) return err("Give either query or intent.");
   try { return out(await ask(a)); } catch (e: unknown) {
     const prefix = e instanceof QuarantineError ? "BLOCKED by quarantine: "

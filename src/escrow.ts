@@ -71,6 +71,8 @@ export function wrapFetchWithEscrow(
       .replace("{nonce}", authorization.nonce)
       .replace("{validAfter}", authorization.validAfter)
       .replace("{validBefore}", authorization.validBefore);
+    if (message.includes("{") || message.includes("}"))
+      throw new Error("the escrow challenge template has a placeholder the purse cannot fill; refusing to sign it");
     const signature = await account().signMessage({ message });
 
     const payment = Buffer.from(JSON.stringify({

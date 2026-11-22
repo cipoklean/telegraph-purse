@@ -31,7 +31,9 @@ export function record(e: Entry) {
 
 export function readAll(): Entry[] {
   if (!fs.existsSync(config.ledgerPath)) return [];
-  return fs.readFileSync(config.ledgerPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  return fs.readFileSync(config.ledgerPath, "utf8").split("\n").filter(Boolean)
+    .map((l) => { try { return JSON.parse(l) as Entry; } catch { return undefined; } }) // a corrupt line must not take every tool down
+    .filter((e): e is Entry => e !== undefined);
 }
 
 const p2 = (n: number) => String(n).padStart(2, "0");

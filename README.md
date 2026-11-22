@@ -56,6 +56,11 @@ and `test/purse.test.ts`:
   defence, not the first. Suggested by a reader of the dev.to tutorial.
 - **Pinned miners still pay through Telegraph.** `PURSE_PIN_MINERS` routes to a
   known-good miner via `/engine/v1/ask/{miner}`; the app never calls a miner directly.
+- **Plain-query asks skip the pin and the quarantine.** A free-form `query` is
+  routed by the node, which reveals the intent and miner only after payment —
+  so pins and quarantine can only act on canonical `intent` asks (or asks that
+  name a miner). Auto-routed failures still record the serving miner, which
+  feeds its miner-level quarantine for later asks.
 - **Burner wallets only, no schedules installed.** Setup generates a fresh
   wallet; this repo adds no cron job.
 
@@ -67,11 +72,11 @@ and `test/purse.test.ts`:
 |---|---|
 | First Season II paid buy | 2026-11-01 18:13 UTC, BTC $77,848.80, 0.01 USDC, [tx 0xb3d0bd7c…](https://sepolia.etherscan.io/tx/0xb3d0bd7cfa2006bd504a228be96bb31bf59df53066714fed3fa50fcb535917a5) |
 | On-chain settlements from the agent wallet | **36 × 0.01 USDC** to Telegraph's payment contract through Nov 14 |
-| Intents bought by the agent | `CRYPTO_PRICE_USD`, `WEATHER_CHECK_TEMPERATURE`, `WEB_SEARCH_GENERAL` |
-| Escrow rail (default since Nov 18) | Live ask settled in epoch 12, 367 ms, no facilitator |
+| Intents bought by the agent | `CRYPTO_PRICE_USD`, `WEATHER_CHECK_TEMPERATURE`, `WEB_SEARCH_GENERAL`, `DNS_RECORD_LOOKUP_GENERAL`, `FX_NOW_EUR`, `CONTENT_EXTRACTION_GENERAL`, `CHAT_COMPLETION_GENERAL` |
+| Escrow rail (default since Nov 18) | Live asks settled in epochs 12, 36 and 37, ~400–1,200 ms, no facilitator — [rows](#escrow-rail-nov-1822) |
 | Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md) |
 | Agent | Hermes v0.22 on an Oracle Cloud ARM VM, purse as an MCP server |
-| Tests | 39 offline tests + typecheck in GitHub Actions; no wallet or network needed |
+| Tests | 47 offline tests + typecheck in GitHub Actions; no wallet or network needed |
 
 ---
 
@@ -247,6 +252,21 @@ Every row below is matched to its on-chain settlement: the wallet was funded wit
 | 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | paid; miner 303 returned no readable answer | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
 
 The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530, recorded as `failed_paid`). Row 12 is the task-1 weather proof. Rows 13-15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
+
+### Escrow rail (Nov 18–22)
+
+The same buys over the default escrow rail: an EIP-191 signature per call,
+settled in the epoch's ledger root — there is no per-call tx by design. Proof
+lands after the epoch closes at `GET /v1/blocks/{epoch}/deliveries/{receipt_hash}`.
+
+| Time (UTC) | Intent | Miner | Cost | Epoch | Receipt |
+|---|---|---|---|---|---|
+| 2026-11-18 20:16:06 | `CRYPTO_PRICE_USD` BTC — first escrow buy | 190069 | 0.01 USDC | 12 | 0x0e922894… |
+| 2026-11-18 20:18:07 | `WEB_SEARCH_GENERAL` — pinned ChainSight #302 | 302 | 0.01 USDC | 12 | 0xd9bb5272… |
+| 2026-11-22 07:31:52 | `CRYPTO_PRICE_USD` BTC | 9107 | 0.01 USDC | 36 | 0x4d029a39… |
+| 2026-11-22 10:17:23 | `WEATHER_CHECK_TEMPERATURE` Lagos — **autonomous Hermes buy** | 20260828 | 0.01 USDC | 37 | 0xdd999d71… |
+| 2026-11-22 10:23:48 | `CRYPTO_PRICE_USD` BTC — Hermes-driven | 9002 | 0.01 USDC | 37 | 0x01f2f6be… |
+| 2026-11-22 10:24:34 | `WEATHER_CHECK_TEMPERATURE` Accra — Hermes-driven | 20260828 | 0.01 USDC | 37 | 0xd2765f43… |
 
 ---
 

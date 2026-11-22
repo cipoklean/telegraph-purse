@@ -54,6 +54,13 @@ let lastBlock: string | null = null;
  */
 let signedUsd: number | null = null;
 function signedUsdNow(): number | null { return signedUsd; }
+/**
+ * Price the guard approved for the current ask, if any. A guard approval is not
+ * a signature: it is promoted to `signedUsd` only when a request carrying the
+ * payment actually leaves through `signingTransport`, so a crash between
+ * approval and signing can never be logged as a spend.
+ */
+let approvedUsd: number | null = null;
 
 /**
  * Paid asks share module state (the signed price, the guard's block reason and the cached
@@ -81,16 +88,33 @@ export function paidTransport(): typeof fetch {
 }
 
 /**
+ * Both rails send their signed retry through this seam. A payment only exists
+ * once a request carrying it hits the wire, so the approved price is marked
+ * signed here — not at guard-approval time.
+ */
+const signingTransport: typeof fetch = (input, init) => {
+  // Read headers without constructing a Request: that would consume the body
+  // lock on a Request that was already used for the unpaid first attempt.
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(init?.headers).forEach((v, k) => headers.set(k, v));
+  if (approvedUsd !== null && (headers.has("x-payment") || headers.has("payment-signature"))) signedUsd = approvedUsd;
+  return transport(input, init);
+};
+
+/**
  * The shared spend guard: returns the block reason, or null and records the
- * signed price. Runs on either rail after the 402 challenge is read and before
- * anything is signed.
+ * approved price (promoted to signed when the payment hits the wire). Runs on
+ * either rail after the 402 challenge is read and before anything is signed.
  */
 function checkSpend(usd: number): string | null {
+  // Fail closed on a price that is not a positive finite number: signing for an
+  // unreadable price is exactly what the purse exists to prevent.
+  if (!Number.isFinite(usd) || usd <= 0) return (lastBlock = "the node's challenge had no usable price");
   const left = config.dailyCapUsd - spentTodayUsd();
   if (usd > config.maxPerCallUsd) return (lastBlock = `price $${usd} is above the per-call cap $${config.maxPerCallUsd}`);
   if (usd > left) return (lastBlock = `price $${usd} is above today's remaining budget $${left.toFixed(4)}`);
   lastBlock = null;
-  signedUsd = usd;
+  approvedUsd = usd;
   return null;
 }
 
@@ -109,12 +133,12 @@ function getPaidFetch() {
     const reason = checkSpend(Number(selectedRequirements.amount) / 1e6);
     return reason ? { abort: true as const, reason } : undefined;
   });
-  paidFetch = wrapFetchWithPayment(transport, client);
+  paidFetch = wrapFetchWithPayment(signingTransport, client);
   return paidFetch;
 }
 
 function getEscrowFetch() {
-  if (!escrowFetch) escrowFetch = wrapFetchWithEscrow(transport, () => account(), checkSpend);
+  if (!escrowFetch) escrowFetch = wrapFetchWithEscrow(signingTransport, () => account(), checkSpend);
   return escrowFetch;
 }
 
@@ -200,6 +224,7 @@ export async function ask(i: AskInput) {
 
 async function buy(i: AskInput) {
   signedUsd = null;
+  approvedUsd = null;
   lastBlock = null;
   const pinnedMiner = minerFor(i);
   const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why, pinned: !!pinnedMiner, ...(pinnedMiner ? { miner_id: pinnedMiner } : {}) };
@@ -278,11 +303,13 @@ async function buy(i: AskInput) {
   // that header is the settlement record and the receipt is X-TELEGRAPH-RECEIPT.
   const settle = b64json(res.headers.get("PAYMENT-RESPONSE")) || b64json(res.headers.get("X-PAYMENT-RESPONSE"));
   const receipt = b64json(res.headers.get("X-TELEGRAPH-RECEIPT")) || settle;
+  const receiptUsd = receipt?.amount_uusdc !== undefined ? Number(receipt.amount_uusdc) / 1e6 : undefined;
   const entry: Entry = {
     ...base, status: "paid",
     intent: receipt?.intent || data.intent || i.intent,
     miner_id: String(data.miner_id ?? receipt?.miner ?? ""), miner_name: data.miner_name,
-    cost_usd: data.cost_usd ?? (receipt ? Number(receipt.amount_uusdc) / 1e6 : undefined),
+    // A paid row must always carry a cost: fall back to the price the purse signed for.
+    cost_usd: [data.cost_usd, receiptUsd, signedUsdNow()].find((v): v is number => typeof v === "number" && Number.isFinite(v)),
     duration_ms: data.duration_ms ?? Date.now() - t0,
     signal_hash: data.signal_hash, receipt_hash: receipt?.receipt_hash,
     tx_hash: receipt?.tx_hash || settle?.transaction, epoch_id: receipt?.epoch_id,
