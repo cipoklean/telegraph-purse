@@ -258,8 +258,13 @@ Every row below is matched to its on-chain settlement: the wallet was funded wit
 | 2026-11-09 11:00:53 | `CRYPTO_PRICE_USD` BTC | $74,114 (miner 190070) | 0.01 USDC | [0x0d4a0ce8…7624](https://sepolia.etherscan.io/tx/0x0d4a0ce8df837722dee3833f5adc14fca2aba1366cd7d25495cb4a441eae7624) |
 | 2026-11-09 11:01:05 | `WEATHER_CHECK_TEMPERATURE` Lagos | 31.8 °C (miner 20260821) | 0.01 USDC | [0x88a273bd…903dbd](https://sepolia.etherscan.io/tx/0x88a273bd228f8974408bb284b9fc80e627115eae885a20d09fd9fa8bdb903dbd) |
 | 2026-11-09 11:01:19 | `WEB_SEARCH_GENERAL` "AI news today" | paid; miner 303 returned no readable answer | 0.01 USDC | [0x66935deb…ec8e](https://sepolia.etherscan.io/tx/0x66935deba494a5ffe2588da3381480e697cfc307748a1f75a473e03624d0ec8e) |
+| 2026-11-16 11:59:58 | `DNS_RECORD_LOOKUP_GENERAL` | coverage test: example.com A (miner 1900999043), receipt 0xe9f20d55… | 0.01 USDC | [0x4b9fe61f…bac6](https://sepolia.etherscan.io/tx/0x4b9fe61f8ff5c33eb2a2f1292b35673862135cf8beaf005b129bd3968a23bac6) |
+| 2026-11-17 00:26:59 | `CRYPTO_PRICE_USD` | coverage test: BTC | 0.01 USDC | [0x527a5ca3…368b](https://sepolia.etherscan.io/tx/0x527a5ca343c6e87808d644346e0c68bbb37ce9b1376fb5a2d4db01d65be5368b) |
+| 2026-11-17 00:27:18 | `FX_NOW_EUR` | coverage test: EUR/USD (miner 20260828), receipt 0x53b60554… | 0.01 USDC | [0xc1ad7aa2…7d3f](https://sepolia.etherscan.io/tx/0xc1ad7aa28cbdd2b1f98069954625f44a21a55390680ac38671b7269d49537d3f) |
+| 2026-11-17 00:27:28 | `CONTENT_EXTRACTION_GENERAL` | coverage test: title of example.com (miner 122008), receipt 0x3334158b… | 0.01 USDC | [0xba867b09…1b7e](https://sepolia.etherscan.io/tx/0xba867b0979c77043fd600ecae36bc89d96a2ea2360d3be6b5cbb1dee39081b7e) |
+| 2026-11-17 00:27:57 | `CHAT_COMPLETION_GENERAL` | coverage test: two-sentence answer, receipt 0x99d9ae5d… | 0.01 USDC | [0x7f63e6c8…5a31](https://sepolia.etherscan.io/tx/0x7f63e6c8d8bc6bc9cdd4a6b09ec71a75109b2bfb425319ad7a51b6b84f775a31) |
 
-The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530, recorded as `failed_paid`). Row 12 is the task-1 weather proof. Rows 13-15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt.
+The first 11 rows are the Nov 1 session (3 BTC buys paid, 8 weather asks that settled despite HTTP 500/530, recorded as `failed_paid`). Row 12 is the task-1 weather proof. Rows 13-15 are the final Morning Brief run (task 3): three live facts bought in one run under the daily budget, each with its receipt. Rows 16-20 are coverage tests (Nov 16-17) that confirmed four more intents work end to end. The ledger keeps receipt hashes, not tx hashes, so these settlements are matched by order and time: each transfer landed 6-15 s after its ledger row.
 
 ### Escrow rail (Nov 18–22)
 
