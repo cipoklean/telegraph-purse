@@ -25,7 +25,8 @@ person needs before letting an agent spend:
 
 1. **Caps** — a per-call and a daily limit, checked *after* Telegraph's price
    challenge and *before* anything is signed. A second hard per-payment cap sits
-   inside the payment client itself, on both rails.
+   inside the x402 client; on the escrow rail the signed amount is read verbatim
+   off the node's own challenge template, so the pre-sign guard is the fence.
 2. **Policy** — a Hermes skill that only buys live facts (prices, weather now,
    fresh search) and requires a one-line `why` for every purchase.
 3. **Receipts** — every purchase, block and failure lands in a local ledger with

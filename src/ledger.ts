@@ -74,13 +74,22 @@ export function summary() {
 }
 
 /**
+ * Settlement-layer failures are not the miner's fault — a facilitator outage
+ * or an escrow refusal can produce a failed_paid row while the miner was
+ * healthy — so they never feed the quarantine count.
+ */
+const SETTLEMENT_FAILURE = /facilitator|settle|insufficient escrow|payment required/i;
+
+/**
  * Paid failures in the last `windowMs` for one target: a named miner, or (when no miner is named)
  * the auto-routed asks for an intent. Returns their timestamps, oldest first.
+ * Rows written before the `pinned` field existed count for neither target.
  */
 export function recentPaidFailures(target: { miner?: string; intent?: string }, windowMs: number, now = Date.now()): number[] {
   return readAll()
     .filter((e) => e.status === "failed_paid")
-    .filter((e) => target.miner ? e.miner_id === target.miner : !e.pinned && e.intent === target.intent)
+    .filter((e) => !SETTLEMENT_FAILURE.test(e.reason ?? ""))
+    .filter((e) => target.miner ? e.miner_id === target.miner : e.pinned === false && e.intent === target.intent)
     .map((e) => Date.parse(e.ts))
     .filter((t) => !isNaN(t) && now - t < windowMs)
     .sort((a, b) => a - b);

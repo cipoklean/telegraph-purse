@@ -591,6 +591,28 @@ test("quarantined auto-route still allows an ask that names a different miner", 
   assert.equal(out.result, "28.7");
 });
 
+test("settlement-layer failures never feed the quarantine count", async () => {
+  config.quarantineFails = 2; config.quarantineMinutes = 60;
+  // The Nov 18 facilitator outage produced three of these; none is the miner's fault.
+  for (let i = 0; i < 2; i++) ledger.record({
+    ts: ledger.isoNow(), status: "failed_paid", intent: "WEB_SEARCH_GENERAL", pinned: false, cost_usd: 0.01,
+    reason: '$0.01 was paid but no answer came back. HTTP 402: settlement failed: Post "https://facilitator.x402.rs/settle": context deadline exceeded',
+  });
+  const t = makeTransport({ amountUusdc: "10000", paid: () => json200({ result: "ok", cost_usd: 0.01, miner_id: "m1" }) });
+  purse.setPaidTransport(t.fetch);
+
+  const out: any = await purse.ask({ intent: "WEB_SEARCH_GENERAL", params: { query: "news" }, why: "auto-route must survive a facilitator outage" });
+  assert.equal(out.receipt.status, "paid");
+});
+
+test("rows written before the pinned field count for neither quarantine target", () => {
+  const now = ledger.isoNow();
+  ledger.record({ ts: now, status: "failed_paid", intent: "X", miner_id: "m", cost_usd: 0.01 });
+  ledger.record({ ts: now, status: "failed_paid", intent: "X", miner_id: "m", cost_usd: 0.01 });
+  assert.equal(ledger.recentPaidFailures({ intent: "X" }, 3600_000).length, 0, "legacy rows never quarantine the auto-route");
+  assert.equal(ledger.recentPaidFailures({ miner: "m" }, 3600_000).length, 2, "they still count against the named miner");
+});
+
 test("old paid failures fall out of the window and quarantine can be turned off", () => {
   const old = new Date(Date.now() - 2 * 3600_000).toISOString().replace(/\.\d+Z$/, "Z");
   ledger.record({ ts: old, status: "failed_paid", intent: "X", miner_id: "m", pinned: true, cost_usd: 0.01 });
