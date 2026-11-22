@@ -20,6 +20,8 @@ export interface Entry {
   rail?: string;
   settlement?: string;
   reason?: string;
+  /** true when the ask named its miner (pin or `miner`), false when the node auto-routed it. */
+  pinned?: boolean;
 }
 
 export function record(e: Entry) {
@@ -69,4 +71,17 @@ export function summary() {
     total_usd: +all.filter(spent).reduce((s, e) => s + (e.cost_usd || 0), 0).toFixed(6),
     by_intent: byIntent,
   };
+}
+
+/**
+ * Paid failures in the last `windowMs` for one target: a named miner, or (when no miner is named)
+ * the auto-routed asks for an intent. Returns their timestamps, oldest first.
+ */
+export function recentPaidFailures(target: { miner?: string; intent?: string }, windowMs: number, now = Date.now()): number[] {
+  return readAll()
+    .filter((e) => e.status === "failed_paid")
+    .filter((e) => target.miner ? e.miner_id === target.miner : !e.pinned && e.intent === target.intent)
+    .map((e) => Date.parse(e.ts))
+    .filter((t) => !isNaN(t) && now - t < windowMs)
+    .sort((a, b) => a - b);
 }

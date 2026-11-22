@@ -49,6 +49,10 @@ and `test/purse.test.ts`:
   payment.
 - **One ask at a time.** Asks are serialized, so two parallel calls cannot both
   pass the daily cap.
+- **A miner that keeps failing is quarantined.** After 2 `failed_paid` from the
+  same miner (or the same auto-routed intent) within 60 minutes, the purse skips
+  it before even asking for a price, so the daily cap is the last line of
+  defence, not the first. Suggested by a reader of the dev.to tutorial.
 - **Pinned miners still pay through Telegraph.** `PURSE_PIN_MINERS` routes to a
   known-good miner via `/engine/v1/ask/{miner}`; the app never calls a miner directly.
 - **Burner wallets only, no schedules installed.** Setup generates a fresh
@@ -66,7 +70,7 @@ and `test/purse.test.ts`:
 | Escrow rail (default since Nov 18) | Live ask settled in epoch 12, 367 ms, no facilitator |
 | Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md) |
 | Agent | Hermes v0.22 on an Oracle Cloud ARM VM, purse as an MCP server |
-| Tests | 36 offline tests + typecheck in GitHub Actions; no wallet or network needed |
+| Tests | 39 offline tests + typecheck in GitHub Actions; no wallet or network needed |
 
 ---
 
@@ -189,6 +193,8 @@ buys with nobody watching.
 | `PURSE_DAILY_CAP_USD` | `0.50` | Most the purse spends per UTC day |
 | `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE`. When set, only those intents may be bought, and a plain `query` ask is refused: the node reveals the intent it routes to only after payment, so it cannot be checked against the list first |
 | `PURSE_TIMEOUT_MS` | `60000` | Give up on an answer after this long |
+| `PURSE_QUARANTINE_FAILS` | `2` | Paid failures from one miner (or auto-routed intent) that trigger a quarantine; `0` turns it off |
+| `PURSE_QUARANTINE_MINUTES` | `60` | How far back failures count, and how long a quarantine lasts |
 | `PURSE_PIN_MINERS` | `WEATHER_CHECK_TEMPERATURE=20260821` | `intent=minerId` pairs sent to one miner via `/engine/v1/ask/{miner}`, still paid through Telegraph. Empty = auto-route |
 | `PURSE_LEDGER` | `~/.telegraph-purse/ledger.jsonl` | Where receipts are written |
 | `PURSE_SCHEME` | `escrow` | Payment rail: `escrow` (sign per call, settle per epoch; no facilitator; x402 fallback), `x402` (per-call on-chain), `escrow-only` (never fall back) |

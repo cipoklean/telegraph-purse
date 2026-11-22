@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
 import { sepolia } from "viem/chains";
 import { config } from "./config.js";
-import { record, spentTodayUsd, Entry, isoNow } from "./ledger.js";
+import { record, spentTodayUsd, Entry, isoNow, recentPaidFailures } from "./ledger.js";
 
 const b64json = (v: string | null) => {
   if (!v) return undefined;
@@ -15,6 +15,20 @@ const b64json = (v: string | null) => {
 export class BudgetError extends Error {}
 export class PaidFailureError extends Error {}
 export class PolicyError extends Error {}
+export class QuarantineError extends BudgetError {}
+
+/** Why this ask must be skipped because its miner (or its auto-route) keeps failing after payment, or null. */
+function quarantineReason(i: AskInput, miner: string | undefined): string | null {
+  if (config.quarantineFails <= 0) return null;
+  if (!miner && !i.intent) return null; // a plain query has no target to quarantine until it is routed
+  const windowMs = config.quarantineMinutes * 60_000;
+  const fails = recentPaidFailures(miner ? { miner } : { intent: i.intent }, windowMs);
+  if (fails.length < config.quarantineFails) return null;
+  const until = new Date(fails[fails.length - config.quarantineFails] + windowMs).toISOString().slice(11, 16);
+  const who = miner ? `miner ${miner}` : `auto-routed ${i.intent}`;
+  const next = miner ? "ask without this miner or name another one with `miner`" : "name a working miner with `miner` (or PURSE_PIN_MINERS)";
+  return `${who} settled ${fails.length} payments without answering in the last ${config.quarantineMinutes} min, so it is quarantined until ${until} UTC; ${next}`;
+}
 
 export function account() {
   if (!config.privateKey) throw new Error("TELEGRAPH_EVM_PRIVATE_KEY is not set");
@@ -187,8 +201,14 @@ export async function ask(i: AskInput) {
 async function buy(i: AskInput) {
   signedUsd = null;
   lastBlock = null;
-  const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why, ...(minerFor(i) ? { miner_id: minerFor(i) } : {}) };
+  const pinnedMiner = minerFor(i);
+  const base: Entry = { ts: isoNow(), status: "failed", intent: i.intent, query: i.query, params: i.params, why: i.why, pinned: !!pinnedMiner, ...(pinnedMiner ? { miner_id: pinnedMiner } : {}) };
   const t0 = Date.now();
+
+  // Quarantine: a miner that keeps settling payments without answering is skipped before anything is signed,
+  // so the daily cap is the last line of defence, not the first.
+  const quarantined = quarantineReason(i, pinnedMiner);
+  if (quarantined) { record({ ...base, status: "blocked", reason: quarantined }); throw new QuarantineError(quarantined); }
 
   /** A payment was signed and the answer never arrived: the money may or may not have settled, but it counts as spent. */
   const paidFailure = (reason: string, settle?: any): never => {
@@ -236,6 +256,8 @@ async function buy(i: AskInput) {
     // The node can settle the payment even when the miner's upstream fails, so a signed payment counts as spent.
     const settle = b64json(res.headers.get("PAYMENT-RESPONSE")) || b64json(res.headers.get("X-PAYMENT-RESPONSE"));
     const signed = signedUsdNow();
+    // Keep the failing miner's id when the node names it, so a later ask can see which miner bled.
+    if (!base.miner_id) { try { const m = JSON.parse(text)?.miner_id; if (m != null) base.miner_id = String(m); } catch { /* not JSON */ } }
     if (signed !== null) return paidFailure(`$${signed} was paid but no answer came back. ${reason}`, settle);
     record({ ...base, reason, duration_ms: Date.now() - t0 });
     throw new Error(reason);

@@ -132,6 +132,7 @@ beforeEach(() => {
   config.timeoutMs = 1000;
   config.allowedIntents = [];
   config.scheme = "x402";
+  config.quarantineFails = 0;
 });
 
 afterEach(() => {
@@ -548,4 +549,53 @@ test("escrow default falls back to x402 when the node offers no escrow entry", a
   assert.equal(out.receipt.status, "paid");
   // unpaid challenge read by the escrow wrapper, then the x402 wrapper's own challenge + paid retry
   assert.deepEqual(t.calls, ["unpaid", "unpaid", "paid"]);
+});
+
+// ---------------------------------------------------------------------------
+// Miner quarantine: repeated paid failures stop the bleed before the daily cap
+// ---------------------------------------------------------------------------
+const failing502 = () => new Response(JSON.stringify({ error: "upstream down", miner_id: "bad-miner" }), { status: 502 });
+
+test("two paid failures from a pinned miner quarantine it before anything is signed", async () => {
+  config.quarantineFails = 2; config.quarantineMinutes = 60;
+  const t = makeTransport({ amountUusdc: "10000", paid: failing502 });
+  purse.setPaidTransport(t.fetch);
+  const ask = () => purse.ask({ intent: "WEATHER_CHECK_TEMPERATURE", params: { location: "Lagos" }, miner: "bad-miner", why: "weather now" });
+
+  assert.ok((await catchErr(ask())) instanceof purse.PaidFailureError);
+  assert.ok((await catchErr(ask())) instanceof purse.PaidFailureError);
+  const callsBefore = t.calls.length;
+  const err = await catchErr(ask());
+
+  assert.ok(err instanceof purse.QuarantineError, `expected QuarantineError, got ${err.name}: ${err.message}`);
+  assert.match(err.message, /miner bad-miner .*quarantined until \d\d:\d\d UTC/);
+  assert.equal(t.calls.length, callsBefore, "a quarantined miner must not even be asked for a price");
+  const rows = ledger.readAll();
+  assert.deepEqual(rows.map((r) => r.status), ["failed_paid", "failed_paid", "blocked"]);
+  assert.equal(ledger.spentTodayUsd(), 0.02, "the third ask cost nothing");
+});
+
+test("quarantined auto-route still allows an ask that names a different miner", async () => {
+  config.quarantineFails = 2; config.quarantineMinutes = 60;
+  const fail = makeTransport({ amountUusdc: "10000", paid: failing502 });
+  purse.setPaidTransport(fail.fetch);
+  const auto = () => purse.ask({ intent: "WEATHER_CHECK_TEMPERATURE", params: { location: "Lagos" }, why: "weather now" });
+  await catchErr(auto()); await catchErr(auto());
+  assert.equal(ledger.readAll()[0].miner_id, "bad-miner", "the failing miner named in the error body is kept");
+
+  assert.ok((await catchErr(auto())) instanceof purse.QuarantineError);
+
+  const ok = makeTransport({ amountUusdc: "10000", paid: () => json200({ result: "28.7", cost_usd: 0.01, miner_id: "good" }) });
+  purse.setPaidTransport(ok.fetch);
+  const out: any = await purse.ask({ intent: "WEATHER_CHECK_TEMPERATURE", params: { location: "Lagos" }, miner: "good", why: "weather now" });
+  assert.equal(out.result, "28.7");
+});
+
+test("old paid failures fall out of the window and quarantine can be turned off", () => {
+  const old = new Date(Date.now() - 2 * 3600_000).toISOString().replace(/\.\d+Z$/, "Z");
+  ledger.record({ ts: old, status: "failed_paid", intent: "X", miner_id: "m", pinned: true, cost_usd: 0.01 });
+  ledger.record({ ts: old, status: "failed_paid", intent: "X", miner_id: "m", pinned: true, cost_usd: 0.01 });
+  assert.equal(ledger.recentPaidFailures({ miner: "m" }, 3600_000).length, 0);
+  assert.equal(ledger.recentPaidFailures({ miner: "m" }, 3 * 3600_000).length, 2);
+  assert.equal(ledger.recentPaidFailures({ intent: "X" }, 3 * 3600_000).length, 0, "pinned failures never quarantine the auto-route");
 });

@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { ask, quote, balance, intents, intentSchema, verify, BudgetError, PaidFailureError, PolicyError } from "./purse.js";
+import { ask, quote, balance, intents, intentSchema, verify, BudgetError, PaidFailureError, PolicyError, QuarantineError } from "./purse.js";
 import { readAll, summary } from "./ledger.js";
 
 const server = new McpServer({ name: "telegraph-purse", version: "0.1.0" });
@@ -21,7 +21,8 @@ const askShape = {
 server.tool("purse_ask", "Buy one answer from the Telegraph network with USDC (x402). Enforces per-call and daily caps and records a receipt. Only for live or fresh facts.", askShape, async (a) => {
   if (!a.query && !a.intent) return err("Give either query or intent.");
   try { return out(await ask(a)); } catch (e: unknown) {
-    const prefix = e instanceof BudgetError ? "BLOCKED by budget: "
+    const prefix = e instanceof QuarantineError ? "BLOCKED by quarantine: "
+      : e instanceof BudgetError ? "BLOCKED by budget: "
       : e instanceof PaidFailureError ? "FAILED (paid, no answer): "
       : e instanceof PolicyError ? "BLOCKED by policy: "
       : "FAILED (not charged): ";

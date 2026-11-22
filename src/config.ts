@@ -18,6 +18,10 @@ export const config = {
   // so weather is pinned to a working miner by default. Set PURSE_PIN_MINERS= (empty) to route everything automatically.
   pinMiners: Object.fromEntries((process.env.PURSE_PIN_MINERS ?? "WEATHER_CHECK_TEMPERATURE=20260821").split(",")
     .map((s) => s.split("=").map((x) => x.trim())).filter((kv) => kv.length === 2 && kv[0] && kv[1])) as Record<string, string>,
+  // A miner (or an auto-routed intent) that settles this many paid failures inside the window is skipped
+  // until the window passes. 0 turns quarantine off.
+  quarantineFails: num(process.env.PURSE_QUARANTINE_FAILS, 2),
+  quarantineMinutes: num(process.env.PURSE_QUARANTINE_MINUTES, 60),
   ledgerPath: process.env.PURSE_LEDGER || path.join(os.homedir(), ".telegraph-purse", "ledger.jsonl"),
   // Payment rail: "escrow" (default; x402 fallback when the node declines it),
   // "x402" (per-call on-chain settlement), or "escrow-only" (no fallback).
