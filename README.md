@@ -48,6 +48,10 @@ and `test/purse.test.ts`:
 - **Allow-list means allow-list.** With `PURSE_ALLOWED_INTENTS` set, a plain
   `query` ask is refused, because the node only reveals the routed intent after
   payment.
+- **A rolling cap stops loops.** At most $0.10 in any 10 minutes by default
+  (`PURSE_WINDOW_CAP_USD`, `PURSE_WINDOW_MINUTES`), on top of the daily cap. The
+  model can't steer it with a task id, and it has no midnight reset, so a retry
+  loop is cut off within minutes and can't double up across 00:00 UTC.
 - **One ask at a time.** Asks are serialized, so two parallel calls cannot both
   pass the daily cap.
 - **A miner that keeps failing is quarantined.** After 2 `failed_paid` from the
@@ -76,7 +80,7 @@ and `test/purse.test.ts`:
 | Escrow rail (default since Nov 18) | Live asks settled in epochs 12, 36 and 37, ~400–1,200 ms, no facilitator — [rows](#escrow-rail-nov-1822) |
 | Failure handling | 8 failed-but-settled asks found, recorded as `failed_paid`, credited back to escrow (0.08 USDC) and [reported](reports/telegraph-settlement-report.md) |
 | Agent | Hermes v0.22 on an Oracle Cloud ARM VM, purse as an MCP server |
-| Tests | 47 offline tests + typecheck in GitHub Actions; no wallet or network needed |
+| Tests | 50 offline tests + typecheck in GitHub Actions; no wallet or network needed |
 
 ---
 
@@ -197,6 +201,8 @@ buys with nobody watching.
 | `TELEGRAPH_EVM_PRIVATE_KEY` | set by `npm run setup` | Burner wallet that pays. Never use a wallet with real funds. |
 | `PURSE_MAX_PER_CALL_USD` | `0.05` | Highest price one answer may cost |
 | `PURSE_DAILY_CAP_USD` | `0.50` | Most the purse spends per UTC day |
+| `PURSE_WINDOW_CAP_USD` | `0.10` | Most the purse spends in any rolling window; `0` turns it off |
+| `PURSE_WINDOW_MINUTES` | `10` | Length of that rolling window |
 | `PURSE_ALLOWED_INTENTS` | empty (all) | Optional comma list, e.g. `CRYPTO_PRICE_USD,WEATHER_CHECK_TEMPERATURE`. When set, only those intents may be bought, and a plain `query` ask is refused: the node reveals the intent it routes to only after payment, so it cannot be checked against the list first |
 | `PURSE_TIMEOUT_MS` | `60000` | Give up on an answer after this long |
 | `PURSE_QUARANTINE_FAILS` | `2` | Paid failures from one miner (or auto-routed intent) that trigger a quarantine; `0` turns it off |
@@ -206,7 +212,9 @@ buys with nobody watching.
 | `PURSE_SCHEME` | `escrow` | Payment rail: `escrow` (sign per call, settle per epoch; no facilitator; x402 fallback), `x402` (per-call on-chain), `escrow-only` (never fall back) |
 | `TELEGRAPH_NODE_URL` | `https://devnode.telegraphprotocol.com` | Telegraph node |
 
-Hermes can add its own per-chat limit on top, in the same `purse:` entry:
+Hermes can add its own per-session limit on top, in the same `purse:` entry. With
+`purse_ask: 1` it counts calls (50 per session), not dollars, so it's an outer
+layer, not a replacement for the purse's USD caps:
 ```yaml
     tool_costs:
       purse_ask: 1

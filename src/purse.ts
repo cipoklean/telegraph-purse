@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
 import { sepolia } from "viem/chains";
 import { config } from "./config.js";
-import { record, spentTodayUsd, Entry, isoNow, recentPaidFailures } from "./ledger.js";
+import { record, spentTodayUsd, spentInWindowUsd, Entry, isoNow, recentPaidFailures } from "./ledger.js";
 
 const b64json = (v: string | null) => {
   if (!v) return undefined;
@@ -106,6 +106,12 @@ const signingTransport: typeof fetch = (input, init) => {
  * approved price (promoted to signed when the payment hits the wire). Runs on
  * either rail after the 402 challenge is read and before anything is signed.
  */
+/** What the rolling-window cap still allows right now; Infinity when the cap is off. */
+function windowRemainingUsd(): number {
+  if (config.windowCapUsd <= 0) return Infinity;
+  return config.windowCapUsd - spentInWindowUsd(config.windowMinutes * 60_000);
+}
+
 function checkSpend(usd: number): string | null {
   // Fail closed on a price that is not a positive finite number: signing for an
   // unreadable price is exactly what the purse exists to prevent.
@@ -113,6 +119,8 @@ function checkSpend(usd: number): string | null {
   const left = config.dailyCapUsd - spentTodayUsd();
   if (usd > config.maxPerCallUsd) return (lastBlock = `price $${usd} is above the per-call cap $${config.maxPerCallUsd}`);
   if (usd > left) return (lastBlock = `price $${usd} is above today's remaining budget $${left.toFixed(4)}`);
+  const windowLeft = windowRemainingUsd();
+  if (usd > windowLeft) return (lastBlock = `price $${usd} is above the rolling cap: $${windowLeft.toFixed(4)} left of $${config.windowCapUsd} per ${config.windowMinutes} min`);
   lastBlock = null;
   approvedUsd = usd;
   return null;
@@ -189,11 +197,14 @@ export async function quote(i: AskInput) {
   }));
   const withinPerCall = accepts.some((a: any) => a.usd <= config.maxPerCallUsd);
   const withinDaily = accepts.some((a: any) => a.usd <= remaining);
+  const windowLeft = windowRemainingUsd();
+  const withinWindow = accepts.some((a: any) => a.usd <= windowLeft);
   return {
     status: 402, accepts,
     within_per_call_cap: withinPerCall,
     within_daily_cap: withinDaily,
-    within_caps: withinPerCall && withinDaily,
+    within_window_cap: withinWindow,
+    within_caps: withinPerCall && withinDaily && withinWindow,
     spent_today_usd: spent,
     remaining_daily_usd: +remaining.toFixed(6),
   };

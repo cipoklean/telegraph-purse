@@ -30,7 +30,7 @@ For the facts above, `purse_ask` is the only source. Do not fetch them yourself 
 4. In your reply, give the answer, then a short footer: cost, miner, and the receipt hash.
 
 ## When it fails
-- `BLOCKED by budget`: tell the user the cap or the intent allow-list stopped it; don't retry. They can raise `PURSE_DAILY_CAP_USD` or `PURSE_MAX_PER_CALL_USD`, widen `PURSE_ALLOWED_INTENTS`, or resend with a canonical `intent` + `params`.
+- `BLOCKED by budget`: tell the user the cap or the intent allow-list stopped it; don't retry. If it was the rolling cap, it clears on its own within `PURSE_WINDOW_MINUTES`. They can raise `PURSE_DAILY_CAP_USD`, `PURSE_MAX_PER_CALL_USD` or `PURSE_WINDOW_CAP_USD`, widen `PURSE_ALLOWED_INTENTS`, or resend with a canonical `intent` + `params`.
 - `FAILED (not charged)`: say live data is unavailable right now and answer from your knowledge, clearly labelled as possibly out of date. Retry at most once.
 - `BLOCKED by quarantine`: that miner (or the auto-route for that intent) settled repeated payments without answering, so the purse skips it for a while; nothing was paid. Tell the user, then either retry once with `miner` set to a different id from `purse_intents` (another ~$0.01) or answer from knowledge, labelled as possibly out of date.
 - `FAILED (paid, no answer)`: the payment settled but the miner returned nothing (the node credits failed paid requests to escrow). Tell the user it settled with no answer, and do NOT retry the same miner in this conversation. You may try once more with `miner` set to a different id from `purse_intents`, telling the user it costs another ~$0.01; otherwise answer from knowledge, labelled as possibly out of date.

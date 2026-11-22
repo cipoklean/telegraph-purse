@@ -133,6 +133,8 @@ beforeEach(() => {
   config.allowedIntents = [];
   config.scheme = "x402";
   config.quarantineFails = 0;
+  config.windowCapUsd = 0;
+  config.windowMinutes = 10;
 });
 
 afterEach(() => {
@@ -369,6 +371,53 @@ test("daily-cap refusal blocks before signing", async () => {
 // ---------------------------------------------------------------------------
 // Section 4: policy and configuration
 // ---------------------------------------------------------------------------
+test("rolling-window cap blocks before signing even with daily budget left", async () => {
+  setCaps(0.05, 0.5);
+  config.windowCapUsd = 0.1; config.windowMinutes = 10;
+  seedPaidToday(0.05); seedPaidToday(0.05); // $0.10 spent just now: window exhausted, daily has $0.40 left
+  const t = makeTransport({ amountUusdc: "10000" });
+  purse.setPaidTransport(t.fetch);
+
+  const err = await catchErr(purse.ask({ intent: "CRYPTO_PRICE_USD", params: { symbol: "BTC" }, why: "loop probe" }));
+
+  assert.ok(err instanceof purse.BudgetError, `expected BudgetError, got ${err.name}: ${err.message}`);
+  assert.match(err.message, /rolling cap/);
+  assert.equal(t.calls.includes("paid"), false, "no signed request may be sent");
+  assert.equal(ledger.readAll().at(-1)!.status, "blocked");
+});
+
+test("spend older than the window no longer counts toward the rolling cap", async () => {
+  setCaps(0.05, 0.5);
+  config.windowCapUsd = 0.1; config.windowMinutes = 10;
+  const old = new Date(Date.now() - 11 * 60_000).toISOString().replace(/\.\d+Z$/, "Z");
+  ledger.record({ ts: old, status: "paid", intent: "CRYPTO_PRICE_USD", cost_usd: 0.05 });
+  ledger.record({ ts: old, status: "failed_paid", intent: "CRYPTO_PRICE_USD", cost_usd: 0.05 });
+  assert.equal(ledger.spentInWindowUsd(10 * 60_000), 0);
+  const t = makeTransport({ amountUusdc: "10000", paid: () => json200({ result: "1", cost_usd: 0.01, miner_id: "m" }) });
+  purse.setPaidTransport(t.fetch);
+
+  const out: any = await purse.ask({ intent: "CRYPTO_PRICE_USD", params: { symbol: "BTC" }, why: "window rolled over" });
+
+  assert.equal(out.receipt.status, "paid");
+});
+
+test("quote and budget report the rolling-window cap", async () => {
+  setCaps(0.05, 0.5);
+  config.windowCapUsd = 0.1; config.windowMinutes = 10;
+  seedPaidToday(0.05); seedPaidToday(0.05);
+  const t = makeTransport({ amountUusdc: "10000" });
+  purse.setPaidTransport(t.fetch);
+
+  const q: any = await purse.quote({ intent: "CRYPTO_PRICE_USD" });
+
+  assert.equal(q.within_daily_cap, true);
+  assert.equal(q.within_window_cap, false);
+  assert.equal(q.within_caps, false);
+  const b = ledger.summary();
+  assert.equal(b.window_cap_usd, 0.1);
+  assert.equal(b.spent_in_window_usd, 0.1);
+});
+
 test("a purchase without a why is refused before signing", async () => {
   const t = makeTransport({ amountUusdc: "50000" });
   purse.setPaidTransport(t.fetch);

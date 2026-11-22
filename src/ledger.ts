@@ -50,6 +50,11 @@ export function spentTodayUsd(): number {
   return readAll().filter((e) => spent(e) && e.ts.startsWith(today())).reduce((s, e) => s + (e.cost_usd || 0), 0);
 }
 
+/** Spend (paid + failed_paid) inside the last `windowMs`, rolling — not tied to the calendar day. */
+export function spentInWindowUsd(windowMs: number, now = Date.now()): number {
+  return readAll().filter((e) => spent(e) && now - Date.parse(e.ts) < windowMs).reduce((s, e) => s + (e.cost_usd || 0), 0);
+}
+
 export function summary() {
   const all = readAll();
   const paid = all.filter((e) => e.status === "paid");
@@ -66,6 +71,9 @@ export function summary() {
     spent_today_usd: +spentTodayUsd().toFixed(6),
     daily_cap_usd: config.dailyCapUsd,
     max_per_call_usd: config.maxPerCallUsd,
+    window_cap_usd: config.windowCapUsd,
+    window_minutes: config.windowMinutes,
+    spent_in_window_usd: +spentInWindowUsd(config.windowMinutes * 60_000).toFixed(6),
     paid_calls: paid.length,
     blocked_calls: all.filter((e) => e.status === "blocked").length,
     failed_calls: all.filter((e) => e.status === "failed").length,

@@ -12,6 +12,10 @@ export const config = {
   usdc: (process.env.USDC_ADDRESS || "0xcc194e1a843B658526D0D5C431f670028582Ae17") as `0x${string}`,
   maxPerCallUsd: num(process.env.PURSE_MAX_PER_CALL_USD, 0.05),
   dailyCapUsd: num(process.env.PURSE_DAILY_CAP_USD, 0.5),
+  // Rolling-window cap: at most this much spend in any PURSE_WINDOW_MINUTES, whatever the
+  // calendar day. Stops a retry loop fast and has no midnight reset. 0 turns it off.
+  windowCapUsd: num(process.env.PURSE_WINDOW_CAP_USD, 0.1),
+  windowMinutes: num(process.env.PURSE_WINDOW_MINUTES, 10),
   timeoutMs: num(process.env.PURSE_TIMEOUT_MS, 60000),
   allowedIntents: (process.env.PURSE_ALLOWED_INTENTS || "").split(",").map((s) => s.trim()).filter(Boolean),
   // intent=minerId pairs. The auto-router kept picking a weather miner whose tunnel is down (and the node still charged),
